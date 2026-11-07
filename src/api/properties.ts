@@ -24,7 +24,7 @@ function mapImage(image: Record<string, unknown>): PropertyImage {
   }
 }
 
-function mapProperty(value: unknown): Property {
+export function mapProperty(value: unknown): Property {
   const r = value as Record<string, unknown>
   return {
     id: Number(r.id),

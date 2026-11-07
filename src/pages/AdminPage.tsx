@@ -1,15 +1,19 @@
+import { UserAvatar } from '@/components/AccountMenu'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
+  adminDeleteUser,
   adminListProperties,
   adminListUsers,
   adminSetStatus,
   createCategory,
   deleteCategory,
 } from '@/api/admin'
+import { deleteProperty } from '@/api/properties'
 import { fetchCategories } from '@/api/categories'
+import { useAuth } from '@/hooks/useAuth'
 import { getErrorKey } from '@/api/errors'
 import { Feedback } from '@/components/Feedback'
 import { categoryLabel, locationLabel } from '@/utils/localize'
@@ -25,6 +29,7 @@ import type { User } from '@/types/auth'
 const STATUSES = ['PENDING', 'APPROVED', 'REJECTED'] as const
 export function AdminPage() {
   const { t, i18n } = useTranslation()
+  const auth = useAuth()
   const [params, setParams] = useSearchParams()
   const requestedTab = params.get('tab')
   const tab =
@@ -32,59 +37,128 @@ export function AdminPage() {
       ? requestedTab
       : 'properties'
   const requestedStatus = params.get('status')
-  const status: PropertyStatus = STATUSES.includes(
+  const page = Math.max(1, Number(params.get('page')) || 1)
+  const ownerId = Number(params.get('ownerId')) || undefined
+  const userQuery = params.get('q') ?? ''
+  const requestedRole = params.get('role')
+  const userRole: 'USER' | 'ADMIN' | undefined =
+    requestedRole === 'USER' || requestedRole === 'ADMIN'
+      ? requestedRole
+      : undefined
+  const status: PropertyStatus | undefined = STATUSES.includes(
     requestedStatus as PropertyStatus,
   )
     ? (requestedStatus as PropertyStatus)
-    : 'PENDING'
+    : undefined
   const setTab = (value: string) =>
     setParams((current) => {
       current.set('tab', value)
+      current.delete('page')
       return current
     })
-  const setStatus = (value: PropertyStatus) =>
+  const setStatus = (value: PropertyStatus | undefined) =>
     setParams((current) => {
-      current.set('status', value)
+      if (value) current.set('status', value)
+      else current.delete('status')
+      current.delete('page')
       return current
     })
   const [confirmation, setConfirmation] = useState<
     | { kind: 'status'; id: number; next: PropertyStatus }
     | { kind: 'category'; category: Category }
+    | { kind: 'user'; user: User }
+    | { kind: 'property'; property: Property }
     | null
   >(null)
+  const requestId = useRef(0)
+  const userDetailsRef = useRef<number | null>(null)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [properties, setProperties] = useState<Property[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [newCat, setNewCat] = useState({ name: '', slug: '' })
   const [loading, setLoading] = useState(true)
+  const [draftQuery, setDraftQuery] = useState(userQuery)
+  const [userDetails, setUserDetails] = useState<User | null>(null)
+  const [userListings, setUserListings] = useState<Property[]>([])
+  const [userListingsState, setUserListingsState] = useState<
+    'loading' | 'ready' | 'error'
+  >('loading')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [detailsId, setDetailsId] = useState<number | null>(null)
   const load = useCallback(() => {
+    const id = ++requestId.current
     setLoading(true)
     setError(null)
-    Promise.all([
-      adminListProperties(status, 1, 50).then((data) =>
-        setProperties(data.items ?? []),
-      ),
-      adminListUsers().then((data) => setUsers(data.items ?? [])),
-      fetchCategories().then(setCategories),
-    ])
-      .catch((err) => setError(getErrorKey(err)))
-      .finally(() => setLoading(false))
-  }, [status])
+    const request = tab === 'properties'
+      ? adminListProperties(status, page, 20, ownerId).then((data) => {
+          if (id !== requestId.current) return
+          setProperties(data.items); setTotalPages(data.totalPages); setTotal(data.total)
+        })
+      : tab === 'users'
+        ? adminListUsers(page, userQuery || undefined, userRole).then((data) => {
+            if (id !== requestId.current) return
+            setUsers(data.items); setTotalPages(data.totalPages); setTotal(data.total)
+          })
+        : fetchCategories().then((data) => { if (id === requestId.current) setCategories(data) })
+    let active = true
+    // Ignore completions from an older tab/filter request.
+    request.catch((err) => { if (active && id === requestId.current) setError(getErrorKey(err)) })
+      .finally(() => { if (active && id === requestId.current) setLoading(false) })
+    return () => { active = false; if (id === requestId.current) requestId.current += 1 }
+  }, [status, page, ownerId, tab, userQuery, userRole])
   useEffect(() => {
-    load()
+    return load()
   }, [load])
   useEffect(() => {
-    if (detailsId === null) return
+    if (detailsId === null && !userDetails) return
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setDetailsId(null)
+      if (event.key === 'Escape') {
+        setDetailsId(null)
+        setUserDetails(null)
+        userDetailsRef.current = null
+      }
     }
     document.addEventListener('keydown', escape)
     return () => document.removeEventListener('keydown', escape)
-  }, [detailsId])
+  }, [detailsId, userDetails])
+  const applyUserFilters = (next: { q?: string; role?: 'USER' | 'ADMIN' }) =>
+    setParams((current) => {
+      const updated = new URLSearchParams(current)
+      if ('q' in next) {
+        const value = next.q?.trim()
+        if (value) updated.set('q', value)
+        else updated.delete('q')
+      }
+      if ('role' in next) {
+        if (next.role) updated.set('role', next.role)
+        else updated.delete('role')
+      }
+      updated.delete('page')
+      return updated
+    })
+  const submitUserSearch = (event: React.FormEvent) => {
+    event.preventDefault()
+    applyUserFilters({ q: draftQuery })
+  }
+  const openUser = async (user: User) => {
+    userDetailsRef.current = user.id
+    setUserDetails(user)
+    setUserListings([])
+    setUserListingsState('loading')
+    try {
+      const data = await adminListProperties(undefined, 1, 50, user.id)
+      if (userDetailsRef.current !== user.id) return
+      setUserListings(data.items)
+      setUserListingsState('ready')
+    } catch {
+      if (userDetailsRef.current !== user.id) return
+      setUserListingsState('error')
+    }
+  }
   const changeStatus = async (id: number, next: PropertyStatus) => {
     setBusy(true)
     setError(null)
@@ -140,6 +214,22 @@ export function AdminPage() {
       setConfirmation(null)
     }
   }
+  const removeAccountOrProperty = async () => {
+    if (!confirmation || !['user', 'property'].includes(confirmation.kind)) return
+    setBusy(true); setError(null); setSuccess(null)
+    try {
+      if (confirmation.kind === 'user') await adminDeleteUser(confirmation.user.id)
+      else if (confirmation.kind === 'property') await deleteProperty(confirmation.property.id)
+      setSuccess('common.deleted')
+      if (page > 1 && (tab === 'users' ? users.length : properties.length) === 1) {
+        setParams((current) => { current.set('page', String(page - 1)); return current })
+      } else load()
+    } catch (err) { setError(getErrorKey(err)) }
+    finally { setBusy(false); setConfirmation(null) }
+  }
+  const viewUserListings = (id: number) => {
+    setParams({ tab: 'properties', ownerId: String(id) })
+  }
   const details = detailsId
     ? properties.find((property) => property.id === detailsId)
     : null
@@ -175,6 +265,10 @@ export function AdminPage() {
       {tab === 'properties' && (
         <>
           <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" aria-pressed={!status} onClick={() => setStatus(undefined)}
+              className={`rounded-md px-3 py-2 text-sm ${!status ? 'bg-accent text-on-accent' : 'border border-line bg-surface text-ink'}`}>
+              {t('admin.allListings')}
+            </button>
             {STATUSES.map((value) => (
               <button
                 key={value}
@@ -185,12 +279,16 @@ export function AdminPage() {
               >
                 {t(`status.${value}`)} (
                 {status === value
-                  ? formatNumber(properties.length, i18n.language)
+                  ? formatNumber(total, i18n.language)
                   : '…'}
                 )
               </button>
             ))}
           </div>
+          {ownerId && <div className="mt-3 flex items-center gap-3 text-sm">
+            <span>{t('admin.ownerFilter', { id: ownerId })}</span>
+            <button type="button" className="underline" onClick={() => setParams((current) => { current.delete('ownerId'); current.delete('page'); return current })}>{t('common.clear')}</button>
+          </div>}
           <div className="mt-4 grid gap-3">
             {properties.map((property) => (
               <article
@@ -230,6 +328,8 @@ export function AdminPage() {
                     >
                       {t('admin.details')}
                     </button>
+                    <Link className="rounded border border-line px-3 py-2 text-xs" to={`/elonlar/${property.id}/tahrir`}>{t('common.edit')}</Link>
+                    <button type="button" disabled={busy || loading} className="rounded border border-line px-3 py-2 text-xs text-danger disabled:opacity-60" onClick={() => setConfirmation({ kind: 'property', property })}>{t('common.delete')}</button>
                     {(
                       [
                         { value: 'APPROVED', key: 'admin.approve' },
@@ -241,7 +341,7 @@ export function AdminPage() {
                         property.status !== action.value && (
                           <button
                             key={action.value}
-                            disabled={busy}
+                            disabled={busy || loading}
                             onClick={() =>
                               setConfirmation({
                                 kind: 'status',
@@ -278,27 +378,136 @@ export function AdminPage() {
         </>
       )}
       {tab === 'users' && (
-        <div className="mt-4 grid gap-2">
-          {users.map((user) => (
-            <article
-              key={user.id}
-              className="min-w-0 rounded-lg border border-line bg-surface p-3"
-            >
-              <p className="break-words text-sm font-semibold text-ink">
-                {user.fullName}
+        <>
+          <form
+            noValidate
+            onSubmit={submitUserSearch}
+            className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+          >
+            <div className="min-w-0 flex-1">
+              <label
+                htmlFor="user-search"
+                className="mb-1 block text-sm text-muted"
+              >
+                {t('admin.searchUsers')}
+              </label>
+              <input
+                id="user-search"
+                type="search"
+                value={draftQuery}
+                onChange={(event) => setDraftQuery(event.target.value)}
+                placeholder={t('admin.searchUsersHint')}
+                className="h-11 w-full min-w-0 rounded-md border border-line bg-surface px-3 text-sm"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="min-h-11 rounded bg-accent px-4 text-sm font-semibold text-on-accent"
+              >
+                {t('admin.searchAction')}
+              </button>
+              {(userQuery || userRole) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftQuery('')
+                    applyUserFilters({ q: '', role: undefined })
+                  }}
+                  className="min-h-11 rounded border border-line px-3 text-sm text-ink"
+                >
+                  {t('common.clear')}
+                </button>
+              )}
+            </div>
+          </form>
+          <div
+            role="group"
+            aria-label={t('admin.roleFilter')}
+            className="mt-3 flex flex-wrap gap-2"
+          >
+            {([undefined, 'USER', 'ADMIN'] as const).map((value) => (
+              <button
+                key={value ?? 'all'}
+                type="button"
+                aria-pressed={userRole === value}
+                onClick={() => applyUserFilters({ role: value })}
+                className={`rounded-md px-3 py-2 text-sm ${userRole === value ? 'bg-accent text-on-accent' : 'border border-line bg-surface text-ink'}`}
+              >
+                {value ? t(`roles.${value}`) : t('admin.allRoles')}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            {t('admin.usersTotal', {
+              value: formatNumber(total, i18n.language),
+            })}
+          </p>
+          <div className="mt-3 grid gap-2">
+            {users.map((user) => (
+              <article
+                key={user.id}
+                className="min-w-0 rounded-lg border border-line bg-surface p-4"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:justify-between">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <UserAvatar user={user} />
+                    <div className="min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => openUser(user)}
+                        className="break-words text-left text-sm font-semibold text-ink underline-offset-4 hover:underline"
+                      >
+                        {user.fullName || user.email}
+                      </button>
+                      <p className="break-all text-xs text-muted">
+                        {user.email}
+                      </p>
+                      <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                        {user.phone && <span>{user.phone}</span>}
+                        {user.telegram && <span>{user.telegram}</span>}
+                      </p>
+                      <p className="mt-1 break-words text-xs text-muted">
+                        {t(`roles.${user.role}`)} ·{' '}
+                        {t('admin.userStats', {
+                          listings: formatNumber(
+                            user._count?.properties ?? 0,
+                            i18n.language,
+                          ),
+                          inquiries: formatNumber(
+                            user._count?.inquiries ?? 0,
+                            i18n.language,
+                          ),
+                        })}{' '}
+                        · {t('common.date')}:{' '}
+                        {formatDate(user.createdAt, i18n.language)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-start gap-2 md:justify-end">
+                    <button type="button" onClick={() => openUser(user)} className="min-h-11 rounded border border-line px-3 text-sm">{t('admin.details')}</button>
+                    <button type="button" onClick={() => viewUserListings(user.id)} className="min-h-11 rounded border border-line px-3 text-sm">{t('admin.viewListings')}</button>
+                    {user.role !== 'ADMIN' && user.id !== auth.user?.id && <button type="button" disabled={busy || loading} onClick={() => setConfirmation({ kind: 'user', user })} className="min-h-11 rounded border border-line px-3 text-sm text-danger disabled:opacity-60">{t('common.delete')}</button>}
+                  </div>
+                </div>
+              </article>
+            ))}
+            {!loading && !error && users.length === 0 && (
+              <p className="text-sm text-muted">
+                {userQuery || userRole
+                  ? t('admin.emptyUsersFiltered')
+                  : t('admin.emptyUsers')}
               </p>
-              <p className="break-all text-xs text-muted">
-                {user.email} · {t(`roles.${user.role}`)}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {t('common.date')}: {formatDate(user.createdAt, i18n.language)}
-              </p>
-            </article>
-          ))}
-          {!loading && !error && users.length === 0 && (
-            <p className="text-sm text-muted">{t('admin.emptyUsers')}</p>
-          )}
-        </div>
+            )}
+          </div>
+        </>
+      )}
+      {tab !== 'categories' && totalPages > 1 && (
+        <nav aria-label={t('admin.pagination')} className="mt-5 flex items-center justify-center gap-3">
+          <button disabled={loading || page <= 1} className="min-h-11 rounded border border-line px-3 disabled:opacity-50" onClick={() => setParams((current) => { current.set('page', String(page - 1)); return current })}>←</button>
+          <span>{formatNumber(page, i18n.language)} / {formatNumber(totalPages, i18n.language)}</span>
+          <button disabled={loading || page >= totalPages} className="min-h-11 rounded border border-line px-3 disabled:opacity-50" onClick={() => setParams((current) => { current.set('page', String(page + 1)); return current })}>→</button>
+        </nav>
       )}
       {tab === 'categories' && (
         <div className="mt-4 grid gap-4">
@@ -350,7 +559,7 @@ export function AdminPage() {
             </div>
             <button
               type="submit"
-              disabled={busy}
+              disabled={busy || loading}
               className="min-h-11 rounded bg-accent px-3 py-2 text-sm font-semibold text-on-accent disabled:opacity-60"
             >
               {t(busy ? 'common.saving' : 'common.add')}
@@ -370,7 +579,7 @@ export function AdminPage() {
                 </p>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={busy || loading}
                   onClick={() =>
                     setConfirmation({ kind: 'category', category })
                   }
@@ -383,6 +592,123 @@ export function AdminPage() {
             {!loading && !error && categories.length === 0 && (
               <p className="text-sm text-muted">{t('admin.emptyCategories')}</p>
             )}
+          </div>
+        </div>
+      )}
+      {userDetails && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="user-details-title"
+          className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
+        >
+          <div className="max-h-[85vh] w-full min-w-0 max-w-2xl overflow-auto rounded-lg bg-surface p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <UserAvatar user={userDetails} />
+                <div className="min-w-0">
+                  <h2
+                    id="user-details-title"
+                    className="min-w-0 break-words font-display text-xl text-ink"
+                  >
+                    {userDetails.fullName || userDetails.email}
+                  </h2>
+                  <p className="mt-1 break-all text-xs text-muted">
+                    {userDetails.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                autoFocus
+                type="button"
+                onClick={() => {
+                  setUserDetails(null)
+                  userDetailsRef.current = null
+                }}
+                className="shrink-0 px-2 py-1 text-sm text-muted hover:text-ink"
+              >
+                {t('common.close')}
+              </button>
+            </div>
+            <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+              {userDetails.phone && <span>{userDetails.phone}</span>}
+              {userDetails.telegram && <span>{userDetails.telegram}</span>}
+              <span>{t(`roles.${userDetails.role}`)}</span>
+              <span>
+                {t('common.date')}:{' '}
+                {formatDate(userDetails.createdAt, i18n.language)}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              {t('admin.userStats', {
+                listings: formatNumber(
+                  userDetails._count?.properties ?? 0,
+                  i18n.language,
+                ),
+                inquiries: formatNumber(
+                  userDetails._count?.inquiries ?? 0,
+                  i18n.language,
+                ),
+              })}
+            </p>
+            <h3 className="mt-4 font-display text-lg text-ink">
+              {t('admin.userListingsTitle')}
+            </h3>
+            {userListingsState === 'loading' && (
+              <p role="status" className="mt-2 text-sm text-muted">
+                {t('common.loading')}
+              </p>
+            )}
+            {userListingsState === 'error' && (
+              <p role="alert" className="mt-2 text-sm text-danger">
+                {t('admin.userListingsError')}
+              </p>
+            )}
+            {userListingsState === 'ready' && userListings.length === 0 && (
+              <p className="mt-2 text-sm text-muted">
+                {t('admin.userListingsEmpty')}
+              </p>
+            )}
+            <div className="mt-2 grid gap-2">
+              {userListings.map((listing) => (
+                <div
+                  key={listing.id}
+                  className="min-w-0 rounded-md border border-line p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="min-w-0 break-words text-sm font-semibold text-ink">
+                      {listing.title}
+                    </p>
+                    <span className="rounded bg-accent-soft px-2 py-0.5 text-[11px] font-semibold text-accent">
+                      {t(`status.${listing.status ?? 'PENDING'}`)}
+                    </span>
+                  </div>
+                  <p className="mt-1 break-words text-xs text-muted">
+                    {locationLabel(listing.city, t)} ·{' '}
+                    {formatPrice(
+                      listing.price,
+                      listing.currency,
+                      i18n.language,
+                    )}{' '}
+                    · {t('property.rooms', { count: listing.rooms })}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Link
+                      to={`/elonlar/${listing.id}`}
+                      className="rounded border border-line px-3 py-1.5 text-xs"
+                    >
+                      {t('common.view')}
+                    </Link>
+                    <Link
+                      to={`/elonlar/${listing.id}/tahrir`}
+                      className="rounded border border-line px-3 py-1.5 text-xs"
+                    >
+                      {t('common.edit')}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -437,7 +763,9 @@ export function AdminPage() {
           messageKey={
             confirmation.kind === 'status'
               ? 'admin.statusConfirm'
-              : 'admin.deleteCategoryConfirm'
+              : confirmation.kind === 'user' ? 'admin.deleteUserConfirm'
+                : confirmation.kind === 'property' ? 'seller.deleteConfirm'
+                  : 'admin.deleteCategoryConfirm'
           }
           values={
             confirmation.kind === 'status'
@@ -445,10 +773,12 @@ export function AdminPage() {
                   id: formatNumber(confirmation.id, i18n.language),
                   status: t(`status.${confirmation.next}`),
                 }
-              : { name: categoryLabel(confirmation.category, t) }
+              : confirmation.kind === 'user' ? { name: confirmation.user.fullName }
+                : confirmation.kind === 'property' ? { title: confirmation.property.title }
+                  : { name: categoryLabel(confirmation.category, t) }
           }
           confirmKey={
-            confirmation.kind === 'category'
+            confirmation.kind !== 'status'
               ? 'common.delete'
               : confirmation.next === 'APPROVED'
                 ? 'admin.approve'
@@ -460,7 +790,8 @@ export function AdminPage() {
           onConfirm={() =>
             confirmation.kind === 'status'
               ? changeStatus(confirmation.id, confirmation.next)
-              : removeCategory(confirmation.category)
+              : confirmation.kind === 'category' ? removeCategory(confirmation.category)
+                : removeAccountOrProperty()
           }
           onCancel={() => setConfirmation(null)}
         />

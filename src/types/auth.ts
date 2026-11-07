@@ -7,4 +7,9 @@ export interface User {
   role: 'USER' | 'ADMIN'
   emailVerified: boolean
   createdAt: string
+  _count?: {
+    properties?: number
+    inquiries?: number
+    favorites?: number
+  }
 }

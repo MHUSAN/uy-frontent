@@ -4,13 +4,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { CategorySection } from '@/components/CategorySection'
 import { PropertyGrid } from '@/components/PropertyGrid'
-import { RegionSection } from '@/components/RegionSection'
 import { SearchPanel } from '@/components/SearchPanel'
 import { useCategories } from '@/hooks/useCategories'
 import type { PropertyCardData } from '@/types/property'
-import type { RegionId } from '@/types/location'
 import { EMPTY_FILTERS, parsePrice, type SearchFilters } from '@/types/search'
 import { readFilters, writeFilters } from '@/utils/searchParams'
 import { scrollToElement } from '@/utils/scroll'
@@ -84,20 +81,6 @@ export function HomePage() {
     if (priceError) setPriceError(false)
   }
 
-  const handleCategorySelect = (slug: string) => {
-    const next: SearchFilters = { ...filters, categorySlug: slug }
-    setFilters(next)
-    setSearchParams(writeFilters(next), { replace: true })
-    scrollToElement('elonlar')
-  }
-
-  const handleRegionSelect = (region: RegionId | '') => {
-    const next: SearchFilters = { ...filters, region, district: '' }
-    setFilters(next)
-    setSearchParams(writeFilters(next), { replace: true })
-    scrollToElement('elonlar')
-  }
-
   const handleSubmit = () => {
     const minimum = parsePrice(filters.minPrice)
     const maximum = parsePrice(filters.maxPrice)
@@ -143,16 +126,6 @@ export function HomePage() {
           />
         </div>
       </section>
-
-      <CategorySection
-        categories={categories.categories}
-        status={categories.status}
-        activeSlug={filters.categorySlug}
-        onSelect={handleCategorySelect}
-        onRetry={categories.retry}
-      />
-
-      <RegionSection selected={filters.region} onSelect={handleRegionSelect} />
 
       <section
         id="elonlar"

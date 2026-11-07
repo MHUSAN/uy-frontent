@@ -1,12 +1,14 @@
 import { apiClient, normalizeApiError } from '@/api/client'
+import { mapProperty, type PropertyPage } from '@/api/properties'
+import type { User } from '@/types/auth'
 import type { Category } from '@/types/property'
 
-export async function adminListProperties(status?: string, page = 1, limit = 20) {
+export async function adminListProperties(status?: string, page = 1, limit = 20, ownerId?: number) {
   try {
     const { data } = await apiClient.get('/admin/properties', {
-      params: { status, page, limit },
+      params: { status, page, limit, ownerId },
     })
-    return data as any
+    return { ...data, items: data.items.map(mapProperty) } as PropertyPage
   } catch (error) {
     throw normalizeApiError(error)
   }
@@ -21,13 +23,24 @@ export async function adminSetStatus(id: number, status: string) {
   }
 }
 
-export async function adminListUsers() {
+export async function adminListUsers(
+  page = 1,
+  q?: string,
+  role?: 'USER' | 'ADMIN',
+) {
   try {
-    const { data } = await apiClient.get('/admin/users')
-    return data as any
+    const { data } = await apiClient.get('/admin/users', {
+      params: { page, limit: 20, ...(q ? { q } : {}), ...(role ? { role } : {}) },
+    })
+    return data as { items: User[]; total: number; totalPages: number }
   } catch (error) {
     throw normalizeApiError(error)
   }
+}
+
+export async function adminDeleteUser(id: number) {
+  try { await apiClient.delete(`/admin/users/${id}`) }
+  catch (error) { throw normalizeApiError(error) }
 }
 
 export async function createCategory(payload: { name: string; slug: string }) {
