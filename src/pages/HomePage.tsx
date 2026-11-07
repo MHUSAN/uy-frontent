@@ -1,48 +1,205 @@
+import { getErrorKey } from '@/api/errors'
+import { categoryLabel } from '@/utils/localize'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router-dom'
+
+import { CategorySection } from '@/components/CategorySection'
+import { PropertyGrid } from '@/components/PropertyGrid'
+import { RegionSection } from '@/components/RegionSection'
+import { SearchPanel } from '@/components/SearchPanel'
+import { useCategories } from '@/hooks/useCategories'
+import type { PropertyCardData } from '@/types/property'
+import type { RegionId } from '@/types/location'
+import { EMPTY_FILTERS, parsePrice, type SearchFilters } from '@/types/search'
+import { readFilters, writeFilters } from '@/utils/searchParams'
+import { scrollToElement } from '@/utils/scroll'
+import { fetchProperties } from '@/api/properties'
 
 export function HomePage() {
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [filters, setFilters] = useState<SearchFilters>(() =>
+    readFilters(searchParams),
+  )
+  const [priceError, setPriceError] = useState(false)
+  const submitted = searchParams.size > 0
+  const queryKey = searchParams.toString()
+  const requestId = useRef(0)
+
+  const categories = useCategories()
+
+  const [properties, setProperties] = useState<PropertyCardData[]>([])
+  const [gridState, setGridState] = useState<
+    'ready' | 'loading' | 'empty' | 'error' | 'unavailable'
+  >('loading')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  const load = useCallback((active: Partial<SearchFilters>) => {
+    const id = ++requestId.current
+    setGridState('loading')
+    setErrorMessage(null)
+    fetchProperties(active)
+      .then((page) => {
+        if (id !== requestId.current) return
+        setProperties(page.items)
+        setGridState(page.items.length === 0 ? 'empty' : 'ready')
+      })
+      .catch((err) => {
+        if (id !== requestId.current) return
+        setErrorMessage(getErrorKey(err))
+        setGridState('error')
+      })
+  }, [])
+
+  useEffect(() => {
+    const params = new URLSearchParams(queryKey)
+    const active = readFilters(params)
+    setFilters(active)
+    load(params.size ? active : {})
+    return () => { requestId.current += 1 }
+  }, [queryKey, load])
+
+  const selectedCategory = categories.categories.find(
+    (category) => category.slug === filters.categorySlug,
+  )
+
+  const summaryItems = [
+    t(filters.listingType === 'SALE' ? 'listingType.sale' : 'listingType.rent'),
+    filters.region ? t(`regions.${filters.region}`) : '',
+    selectedCategory ? categoryLabel(selectedCategory, t) : '',
+    filters.rooms
+      ? t('property.rooms', { count: Number(filters.rooms) })
+      : '',
+  ].filter((item) => item.length > 0)
+
+  const handleFilterChange = (patch: Partial<SearchFilters>) => {
+    setFilters((current) => {
+      const next = { ...current, ...patch }
+      if (patch.region !== undefined) {
+        next.district = ''
+      }
+      return next
+    })
+    if (priceError) setPriceError(false)
+  }
+
+  const handleCategorySelect = (slug: string) => {
+    const next: SearchFilters = { ...filters, categorySlug: slug }
+    setFilters(next)
+    setSearchParams(writeFilters(next), { replace: true })
+    scrollToElement('elonlar')
+  }
+
+  const handleRegionSelect = (region: RegionId | '') => {
+    const next: SearchFilters = { ...filters, region, district: '' }
+    setFilters(next)
+    setSearchParams(writeFilters(next), { replace: true })
+    scrollToElement('elonlar')
+  }
+
+  const handleSubmit = () => {
+    const minimum = parsePrice(filters.minPrice)
+    const maximum = parsePrice(filters.maxPrice)
+    if (minimum !== null && maximum !== null && minimum > maximum) {
+      setPriceError(true)
+      return
+    }
+    setPriceError(false)
+    setSearchParams(writeFilters(filters), { replace: true })
+    if (new URLSearchParams(writeFilters(filters)).toString() === queryKey) load(filters)
+    scrollToElement('elonlar')
+  }
+
+  const handleReset = () => {
+    setFilters(EMPTY_FILTERS)
+    setSearchParams({}, { replace: true })
+    setPriceError(false)
+    if (!queryKey) load({})
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-      <section className="grid gap-12 py-14 sm:py-20 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center lg:gap-16 lg:py-24">
+      <section className="pt-8 sm:pt-10">
+        <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
+          <span className="h-px w-6 bg-accent" aria-hidden="true" />
+          {t('home.eyebrow')}
+        </p>
+        <h1 className="mt-3 max-w-3xl font-display text-3xl leading-[1.12] tracking-[-0.025em] text-ink sm:text-4xl lg:text-[2.75rem]">
+          {t('home.title')}
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-[15px] sm:leading-7">
+          {t('home.subtitle')}
+        </p>
+        <div className="mt-6">
+          <SearchPanel
+            filters={filters}
+            categories={categories.categories}
+            categoryStatus={categories.status}
+            priceError={priceError}
+            onChange={handleFilterChange}
+            onSubmit={handleSubmit}
+            onReset={handleReset}
+          />
+        </div>
+      </section>
+
+      <CategorySection
+        categories={categories.categories}
+        status={categories.status}
+        activeSlug={filters.categorySlug}
+        onSelect={handleCategorySelect}
+        onRetry={categories.retry}
+      />
+
+      <RegionSection selected={filters.region} onSelect={handleRegionSelect} />
+
+      <section
+        id="elonlar"
+        className="mt-10 scroll-mt-20 border-t border-line pb-12 pt-8"
+      >
         <div>
-          <p className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted">
-            <span className="h-px w-8 bg-accent" aria-hidden="true" />
-            {t('home.eyebrow')}
-          </p>
-
-          <h1 className="mt-6 max-w-2xl font-display text-4xl leading-[1.08] tracking-[-0.03em] text-ink sm:text-5xl lg:text-[3.5rem]">
-            {t('home.title')}
-          </h1>
-
-          <p className="mt-5 max-w-xl text-base leading-7 text-muted sm:text-lg sm:leading-8">
-            {t('home.subtitle')}
+          <h2 className="font-display text-2xl tracking-[-0.02em] text-ink">
+            {t('home.listings.title')}
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            {t('home.listings.subtitle')}
           </p>
         </div>
 
-        <aside className="border-t border-line pt-6 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-            {t('home.foundationLabel')}
-          </p>
-          <h2 className="mt-3 font-display text-2xl tracking-[-0.02em] text-ink">
-            {t('home.foundationTitle')}
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-muted">
-            {t('home.foundationBody')}
-          </p>
+        {submitted ? (
+          <div
+            role="status"
+            className="mt-4 flex items-start gap-2.5 rounded-md border border-line bg-surface px-3.5 py-3"
+          >
+            <div className="min-w-0">
+              <p className="text-xs leading-5 text-ink">
+                {t('home.listings.searchNotice')}
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-muted">
+                <span className="font-semibold text-ink">
+                  {t('home.listings.criteria')}:
+                </span>{' '}
+                {summaryItems.join(' · ')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleReset}
+              className="ml-auto shrink-0 text-[11px] font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
+            >
+              {t('common.clear')}
+            </button>
+          </div>
+        ) : null}
 
-          <dl className="mt-6 space-y-3 border-t border-line pt-5 text-sm">
-            <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-muted">{t('home.languagesLabel')}</dt>
-              <dd className="text-right text-ink">{t('home.languagesValue')}</dd>
-            </div>
-            <div className="flex items-baseline justify-between gap-4">
-              <dt className="text-muted">{t('home.themeLabel')}</dt>
-              <dd className="text-right text-ink">{t('home.themeValue')}</dd>
-            </div>
-          </dl>
-        </aside>
+        {errorMessage ? (
+          <p className="mt-4 text-sm text-danger">{t(errorMessage)}</p>
+        ) : null}
+
+        <div className="mt-4">
+          <PropertyGrid properties={properties} state={gridState} />
+        </div>
       </section>
     </div>
   )

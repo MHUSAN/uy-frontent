@@ -1,16 +1,16 @@
 <!doctype html>
-<html lang="en">
+<html lang="uz">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="TezUy is a real estate marketplace for buying and renting property in Uzbekistan."
+      content="O‘zbekiston bo‘ylab ko‘chmas mulkni sotib olish va ijaraga olish."
     />
-    <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#101411" media="(prefers-color-scheme: dark)" />
-    <title>TezUy - Real estate in Uzbekistan</title>
+    <meta name="theme-color" content="#f5f7f5" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1310" media="(prefers-color-scheme: dark)" />
+    <title>TezUy — O‘zbekistondagi ko‘chmas mulk</title>
     <script>
       ;(() => {
         try {
@@ -26,7 +26,7 @@
           document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
 
           const storedLanguage = localStorage.getItem('tezuy.language')
-          if (storedLanguage) {
+          if (['uz', 'ru', 'en'].includes(storedLanguage)) {
             document.documentElement.lang = storedLanguage
           }
         } catch {

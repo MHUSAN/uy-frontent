@@ -3,27 +3,29 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --canvas: #f6f4ee;
-  --surface: #fffefa;
-  --ink: #16201a;
-  --muted: #68716b;
-  --line: #dedbd2;
-  --accent: #1d5b45;
-  --accent-soft: #e7efe9;
-  --on-accent: #f7f5ef;
+  --canvas: #f5f7f5;
+  --surface: #ffffff;
+  --ink: #17211b;
+  --muted: #5f6a64;
+  --line: #dfe4e0;
+  --accent: #145c43;
+  --accent-soft: #e8f1ec;
+  --on-accent: #ffffff;
+  --danger: #b42318;
 
   color-scheme: light;
 }
 
 .dark {
-  --canvas: #101411;
-  --surface: #161b17;
-  --ink: #eef1eb;
-  --muted: #9ba69e;
-  --line: #2a332c;
-  --accent: #8fbfa8;
-  --accent-soft: #1e2e25;
-  --on-accent: #101411;
+  --canvas: #0e1310;
+  --surface: #151b17;
+  --ink: #edf2ee;
+  --muted: #98a49d;
+  --line: #28332c;
+  --accent: #86c7a7;
+  --accent-soft: #1a2b23;
+  --on-accent: #0b100d;
+  --danger: #fda29b;
 
   color-scheme: dark;
 }
@@ -37,6 +39,7 @@
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
   --color-on-accent: var(--on-accent);
+  --color-danger: var(--danger);
 
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
@@ -64,12 +67,28 @@
   }
 
   button,
-  select {
+  input,
+  select,
+  textarea {
     font: inherit;
   }
 
   button {
     cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
   }
 
   ::selection {

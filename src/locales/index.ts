@@ -23,11 +23,10 @@ function detectLanguage(): Language {
       return storedLanguage
     }
   } catch {
-    // Fall through to browser and default language detection.
+    // Fall through to the Uzbek default.
   }
 
-  const browserLanguage = window.navigator.language.slice(0, 2).toLowerCase()
-  return isLanguage(browserLanguage) ? browserLanguage : DEFAULT_LANGUAGE
+  return DEFAULT_LANGUAGE
 }
 
 const initialLanguage = detectLanguage()

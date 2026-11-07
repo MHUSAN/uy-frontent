@@ -2,7 +2,7 @@ export const SUPPORTED_LANGUAGES = ['en', 'ru', 'uz'] as const
 
 export type Language = (typeof SUPPORTED_LANGUAGES)[number]
 
-export const DEFAULT_LANGUAGE: Language = 'en'
+export const DEFAULT_LANGUAGE: Language = 'uz'
 export const LANGUAGE_STORAGE_KEY = 'tezuy.language'
 
 export const LANGUAGE_LABELS: Record<Language, string> = {
