@@ -299,6 +299,9 @@ const en = {
     commercial: 'Commercial property',
   },
   form: {
+    imageLink: 'Photo link (optional)',
+    addLink: 'Add',
+    linkInvalid: 'Enter a valid image link (https://...).',
     wordCount: 'Characters: {{count}} (min {{min}}, max {{max}})',
     sBasic: 'Basic information',
     sPrice: 'Price',
@@ -337,7 +340,7 @@ const en = {
     images: 'Listing photos',
     chooseImages: 'Choose photos',
     noFiles: 'No photos selected',
-    fileHint: 'Up to 3 JPEG, PNG, WebP or AVIF photos, 5 MB each.',
+    fileHint: 'Up to 3 JPEG, PNG, WebP or AVIF photos in total: choose a file or paste a link.',
     selectRegion: 'Select a region',
     selectCategory: 'Select a category',
   },

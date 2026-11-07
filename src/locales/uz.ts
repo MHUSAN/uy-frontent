@@ -10,7 +10,7 @@ const uz = {
     skipToContent: 'Asosiy tarkibga o‘tish',
   },
   brand: {
-    tagline: 'O‘zbekiston bo‘ylab ko‘chmas mulk',
+    tagline: 'Tez tanlang, tez yashang',
   },
   nav: {
     primary: 'Asosiy navigatsiya',
@@ -29,10 +29,10 @@ const uz = {
     rent: 'Ijaraga',
   },
   home: {
-    eyebrow: 'Ko‘chmas mulk · O‘zbekiston',
-    title: 'Hayotingizga mos uy-joy toping.',
+    eyebrow: 'Uy-joy · Yer-suv · O‘zbekiston',
+    title: 'Tez toping, tez ko‘chib o‘ting — TezUy bilan!',
     subtitle:
-      'O‘zbekiston bo‘ylab sotiladigan va ijaraga beriladigan uy-joylarni hudud, kategoriya va byudjet bo‘yicha qidiring.',
+      'Uy-joy, hovli-bog‘, yer-maydon va tijorat binolari — sotuv va ijara e’lonlarini hudud, kategoriya va byudjet bo‘yicha oson-osonlik bilan qidiring.',
     search: {
       listingType: 'E’lon turi',
       query: 'Qidiruv',
@@ -88,7 +88,7 @@ const uz = {
       unavailableTitle: 'E’lonlarni qidiring',
       unavailableBody:
         'Mos e’lonlarni ko‘rish uchun filtrlarni tanlab, qidiruvni boshlang.',
-      emptyTitle: 'Hozircha e’lonlar yo‘q',
+      emptyTitle: 'Hozircha e’lon yo‘q — birinchi bo‘lib joylang!',
       emptyBody:
         'Tasdiqlangan e’lonlar sotuvchilar tomonidan joylangach shu yerda ko‘rinadi.',
       errorTitle: 'E’lonlarni yuklab bo‘lmadi',
@@ -227,7 +227,7 @@ const uz = {
   authFlow: {
     logout: 'Chiqish',
     dashboard: 'Boshqaruv',
-    brandTitle: 'Yangi hayot sari ilk qadam.',
+    brandTitle: 'Yangi uy — yangi hayot, yangi umid, yangi baxt.',
     brandBody: 'E’lonlaringizni boshqaring va o‘zingizga mos uy toping.',
     loginTitle: 'Xush kelibsiz',
     loginBody: 'TezUy akkauntingizga kiring.',
@@ -303,6 +303,9 @@ const uz = {
     commercial: 'Tijorat ko‘chmas mulki',
   },
   form: {
+    imageLink: 'Rasm havolasi (ixtiyoriy)',
+    addLink: 'Qo‘shish',
+    linkInvalid: 'To‘g‘ri rasm havolasini (https://...) kiriting.',
     wordCount: 'Belgilar: {{count}} (kamida {{min}}, ko‘pi bilan {{max}})',
     sBasic: 'Asosiy ma’lumot',
     sPrice: 'Narx',
@@ -341,7 +344,7 @@ const uz = {
     images: 'E’lon rasmlari',
     chooseImages: 'Rasmlarni tanlash',
     noFiles: 'Rasm tanlanmagan',
-    fileHint: 'JPEG, PNG, WebP yoki AVIF formatida 3 tagacha rasm, har biri 5 MB gacha.',
+    fileHint: 'JPEG, PNG, WebP yoki AVIF formatida jami 3 tagacha rasm: faylni tanlang yoki havola kiriting.',
     selectRegion: 'Hududni tanlang',
     selectCategory: 'Kategoriyani tanlang',
   },

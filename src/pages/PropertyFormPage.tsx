@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ImagePlus, MapPin, Phone, Send, X } from 'lucide-react'
+import { ImagePlus, Link2, MapPin, Phone, Send, X } from 'lucide-react'
 import { useCategories } from '@/hooks/useCategories'
 import {
   createProperty,
   fetchProperty,
   updateProperty,
   uploadPropertyImages,
+  addPropertyImageUrls,
 } from '@/api/properties'
 import { updateCurrentUser } from '@/api/auth'
 import { getErrorKey } from '@/api/errors'
@@ -100,6 +101,25 @@ export function PropertyFormPage() {
   const [phone, setPhone] = useState('')
   const [telegram, setTelegram] = useState('')
   const [files, setFiles] = useState<File[]>([])
+  const [links, setLinks] = useState<string[]>([])
+  const [linkDraft, setLinkDraft] = useState('')
+  const [linkError, setLinkError] = useState(false)
+  const addLink = () => {
+    const value = linkDraft.trim()
+    let valid = false
+    try {
+      valid = /^https?:$/.test(new URL(value).protocol)
+    } catch {
+      valid = false
+    }
+    if (!valid || files.length + links.length >= MAX_IMAGES) {
+      setLinkError(true)
+      return
+    }
+    setLinks([...links, value])
+    setLinkDraft('')
+    setLinkError(false)
+  }
   const previews = useMemo(
     () => files.map((f) => URL.createObjectURL(f)),
     [files],
@@ -248,7 +268,7 @@ export function PropertyFormPage() {
       return
     }
     if (
-      files.length > MAX_IMAGES ||
+      files.length + links.length > MAX_IMAGES ||
       files.some(
         (file) =>
           file.size > 5 * 1024 * 1024 ||
@@ -290,6 +310,7 @@ export function PropertyFormPage() {
         ? await updateProperty(editId, payload)
         : await createProperty(payload)
       if (files.length) await uploadPropertyImages(result.id, files)
+      if (links.length) await addPropertyImageUrls(result.id, links)
       navigate(`/elonlar/${result.id}`)
     } catch (err) {
       setError(getErrorKey(err))
@@ -534,7 +555,9 @@ export function PropertyFormPage() {
             accept="image/jpeg,image/png,image/webp,image/avif"
             multiple
             onChange={(e) => {
-              setFiles(Array.from(e.target.files ?? []).slice(0, MAX_IMAGES))
+              setFiles(
+                Array.from(e.target.files ?? []).slice(0, MAX_IMAGES - links.length),
+              )
               e.target.value = ''
             }}
             className="peer sr-only"
@@ -550,15 +573,71 @@ export function PropertyFormPage() {
           <p id="image-hint" className="text-xs text-muted">
             {t('form.fileHint')}
           </p>
-          {files.length > 0 && (
+          <div>
+            <label htmlFor="image-link" className="mb-1 block text-sm font-medium text-muted">
+              {t('form.imageLink')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="image-link"
+                type="url"
+                inputMode="url"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={linkDraft}
+                onChange={(e) => {
+                  setLinkDraft(e.target.value)
+                  setLinkError(false)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    addLink()
+                  }
+                }}
+                disabled={files.length + links.length >= MAX_IMAGES}
+                aria-invalid={linkError}
+                className={`${INPUT} flex-1 ${linkError ? 'border-danger' : ''}`}
+              />
+              <button
+                type="button"
+                onClick={addLink}
+                disabled={files.length + links.length >= MAX_IMAGES}
+                className="inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-lg border border-accent px-4 text-sm font-semibold text-accent disabled:opacity-50"
+              >
+                <Link2 size={16} aria-hidden="true" />
+                {t('form.addLink')}
+              </button>
+            </div>
+            {linkError && (
+              <p className="mt-1.5 text-xs text-danger">{t('form.linkInvalid')}</p>
+            )}
+          </div>
+          {files.length + links.length > 0 && (
             <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {links.map((url, index) => (
+                <li
+                  key={`${url}-${index}`}
+                  className="relative aspect-square overflow-hidden rounded-lg border border-line"
+                >
+                  <img src={url} alt="" className="size-full object-cover" />
+                  <button
+                    type="button"
+                    aria-label={t('form.removeImage')}
+                    onClick={() => setLinks(links.filter((_, i) => i !== index))}
+                    className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-black/60 text-white"
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
               {files.map((file, index) => (
                 <li
                   key={`${file.name}-${index}`}
                   className="relative aspect-square overflow-hidden rounded-lg border border-line"
                 >
                   <img src={previews[index]} alt="" className="size-full object-cover" />
-                  {index === 0 && (
+                  {index === 0 && links.length === 0 && (
                     <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-on-accent">
                       {t('form.mainPhoto')}
                     </span>

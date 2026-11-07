@@ -300,6 +300,9 @@ const ru = {
     commercial: 'Коммерческая недвижимость',
   },
   form: {
+    imageLink: 'Ссылка на фото (необязательно)',
+    addLink: 'Добавить',
+    linkInvalid: 'Введите корректную ссылку на фото (https://...).',
     wordCount: 'Символов: {{count}} (от {{min}} до {{max}})',
     sBasic: 'Основная информация',
     sPrice: 'Цена',
@@ -338,7 +341,7 @@ const ru = {
     images: 'Фотографии объявления',
     chooseImages: 'Выбрать фотографии',
     noFiles: 'Фотографии не выбраны',
-    fileHint: 'До 3 фотографий JPEG, PNG, WebP или AVIF, не более 5 МБ каждая.',
+    fileHint: 'Всего до 3 фото JPEG, PNG, WebP или AVIF: выберите файл или вставьте ссылку.',
     selectRegion: 'Выберите регион',
     selectCategory: 'Выберите категорию',
   },

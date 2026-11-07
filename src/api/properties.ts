@@ -167,6 +167,18 @@ export async function uploadPropertyImages(
   }
 }
 
+export async function addPropertyImageUrls(
+  id: number,
+  urls: string[],
+): Promise<Property> {
+  try {
+    const { data } = await apiClient.post(`/properties/${id}/images/url`, { urls })
+    return mapProperty(data)
+  } catch (error) {
+    throw normalizeApiError(error)
+  }
+}
+
 export async function deletePropertyImage(id: number, imageId: number): Promise<void> {
   try {
     await apiClient.delete(`/properties/${id}/images/${imageId}`)
