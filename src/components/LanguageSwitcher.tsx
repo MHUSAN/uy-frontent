@@ -30,7 +30,7 @@ export function LanguageSwitcher() {
             onClick={() => {
               void i18n.changeLanguage(language)
             }}
-            className={`inline-flex h-7 items-center justify-center rounded-[5px] px-2 text-[10px] font-semibold tracking-[0.08em] transition-colors sm:h-8 sm:px-2.5 sm:text-[11px] ${
+            className={`inline-flex h-7 items-center justify-center rounded-[5px] px-1.5 text-[10px] font-semibold tracking-[0.08em] transition-colors sm:h-8 sm:px-2.5 sm:text-[11px] ${
               isActive
                 ? 'bg-accent-soft text-accent'
                 : 'text-muted hover:bg-canvas hover:text-ink'
