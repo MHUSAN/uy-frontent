@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="TezUy is a real estate marketplace for buying and renting property in Uzbekistan."
+    />
+    <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#101411" media="(prefers-color-scheme: dark)" />
+    <title>TezUy - Real estate in Uzbekistan</title>
+    <script>
+      ;(() => {
+        try {
+          const storedTheme = localStorage.getItem('tezuy.theme')
+          const prefersDark = window.matchMedia(
+            '(prefers-color-scheme: dark)',
+          ).matches
+          const isDark =
+            storedTheme === 'dark' ||
+            ((!storedTheme || storedTheme === 'system') && prefersDark)
+
+          document.documentElement.classList.toggle('dark', isDark)
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
+
+          const storedLanguage = localStorage.getItem('tezuy.language')
+          if (storedLanguage) {
+            document.documentElement.lang = storedLanguage
+          }
+        } catch {
+          // Theme and language still fall back to their defaults.
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
