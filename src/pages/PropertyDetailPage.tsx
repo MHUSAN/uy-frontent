@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { createInquiry } from '@/api/inquiries'
 import { fetchProperty } from '@/api/properties'
-import { addFavorite, removeFavorite } from '@/api/favorites'
+import { addFavorite, fetchFavorites, removeFavorite } from '@/api/favorites'
 import { getErrorKey } from '@/api/errors'
 import { useAuth } from '@/hooks/useAuth'
 import type { Property } from '@/types/property'
@@ -71,6 +71,19 @@ export function PropertyDetailPage() {
       cancelled = true
     }
   }, [propertyId, auth.token, cacheKey])
+  useEffect(() => {
+    if (!auth.user || !Number.isInteger(propertyId)) return
+    let cancelled = false
+    fetchFavorites()
+      .then((list) => {
+        if (!cancelled)
+          setFavorite(list.some((item) => item.property.id === propertyId))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [auth.user, propertyId])
   if (loading) return <PageLoading />
   if (error || !property)
     return (

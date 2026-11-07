@@ -79,6 +79,13 @@ const ru = {
       all: 'Все регионы',
     },
     listings: {
+      sort: 'Сортировка',
+      sortOptions: {
+        newest: 'Сначала новые',
+        oldest: 'Сначала старые',
+        price_asc: 'Сначала дешёвые',
+        price_desc: 'Сначала дорогие',
+      },
       loadMore: 'Показать ещё',
       shown: 'Показано {{shown}} из {{total}}',
       title: 'Последние объявления',

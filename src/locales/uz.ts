@@ -79,6 +79,13 @@ const uz = {
       all: 'Barcha hududlar',
     },
     listings: {
+      sort: 'Saralash',
+      sortOptions: {
+        newest: 'Yangilari avval',
+        oldest: 'Eskilari avval',
+        price_asc: 'Arzonlari avval',
+        price_desc: 'Qimmatlari avval',
+      },
       loadMore: 'Yana ko‘rsatish',
       shown: '{{shown}} / {{total}} ta e’lon ko‘rsatildi',
       title: 'So‘nggi e’lonlar',

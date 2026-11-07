@@ -77,6 +77,13 @@ const en = {
       all: 'All regions',
     },
     listings: {
+      sort: 'Sort by',
+      sortOptions: {
+        newest: 'Newest first',
+        oldest: 'Oldest first',
+        price_asc: 'Price: low to high',
+        price_desc: 'Price: high to low',
+      },
       loadMore: 'Load more',
       shown: 'Showing {{shown}} of {{total}} listings',
       title: 'Latest listings',

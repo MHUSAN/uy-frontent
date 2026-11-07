@@ -16,6 +16,8 @@ import { fetchProperties } from '@/api/properties'
 import { cacheGet, cacheSet } from '@/utils/cache'
 
 const PAGE_SIZE = 12
+type SortValue = 'newest' | 'oldest' | 'price_asc' | 'price_desc'
+const SORT_OPTIONS: SortValue[] = ['newest', 'oldest', 'price_asc', 'price_desc']
 
 export function HomePage() {
   const { t } = useTranslation()
@@ -35,6 +37,8 @@ export function HomePage() {
   const [pageNo, setPageNo] = useState(1)
   const [loadingMore, setLoadingMore] = useState(false)
   const activeFilters = useRef<Partial<SearchFilters>>({})
+  const [sort, setSort] = useState<SortValue>('newest')
+  const sortRef = useRef<SortValue>('newest')
   const [gridState, setGridState] = useState<
     'ready' | 'loading' | 'empty' | 'error' | 'unavailable'
   >('loading')
@@ -42,7 +46,7 @@ export function HomePage() {
 
   const load = useCallback((active: Partial<SearchFilters>) => {
     const id = ++requestId.current
-    const cacheKey = `home:${JSON.stringify(active)}`
+    const cacheKey = `home:${sortRef.current}:${JSON.stringify(active)}`
     const cached = cacheGet<{ items: PropertyCardData[]; total: number }>(cacheKey)
     activeFilters.current = active
     setPageNo(1)
@@ -52,7 +56,7 @@ export function HomePage() {
       setGridState(cached.items.length === 0 ? 'empty' : 'ready')
     } else setGridState('loading')
     setErrorMessage(null)
-    fetchProperties(active)
+    fetchProperties(active, 1, PAGE_SIZE, sortRef.current)
       .then((page) => {
         if (id !== requestId.current) return
         cacheSet(cacheKey, { items: page.items, total: page.total })
@@ -75,10 +79,16 @@ export function HomePage() {
     return () => { requestId.current += 1 }
   }, [queryKey, load])
 
+  const changeSort = (value: SortValue) => {
+    sortRef.current = value
+    setSort(value)
+    load(activeFilters.current)
+  }
+
   const loadMore = () => {
     const next = pageNo + 1
     setLoadingMore(true)
-    fetchProperties(activeFilters.current, next, PAGE_SIZE)
+    fetchProperties(activeFilters.current, next, PAGE_SIZE, sortRef.current)
       .then((page) => {
         setProperties((current) => {
           const seen = new Set(current.map((item) => item.id))
@@ -187,6 +197,23 @@ export function HomePage() {
           <p className="mt-1 text-sm text-muted">
             {t('home.listings.subtitle')}
           </p>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <label htmlFor="sort" className="text-sm text-muted">
+            {t('home.listings.sort')}
+          </label>
+          <select
+            id="sort"
+            value={sort}
+            onChange={(e) => changeSort(e.target.value as SortValue)}
+            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
+          >
+            {SORT_OPTIONS.map((value) => (
+              <option key={value} value={value}>
+                {t(`home.listings.sortOptions.${value}`)}
+              </option>
+            ))}
+          </select>
         </div>
 
         {submitted ? (
