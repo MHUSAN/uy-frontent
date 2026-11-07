@@ -85,6 +85,7 @@ export function AdminPage() {
   const [userListingsState, setUserListingsState] = useState<
     'loading' | 'ready' | 'error'
   >('loading')
+  const [userListingsError, setUserListingsError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -148,14 +149,16 @@ export function AdminPage() {
     userDetailsRef.current = user.id
     setUserDetails(user)
     setUserListings([])
+    setUserListingsError(null)
     setUserListingsState('loading')
     try {
       const data = await adminListProperties(undefined, 1, 50, user.id)
       if (userDetailsRef.current !== user.id) return
       setUserListings(data.items)
       setUserListingsState('ready')
-    } catch {
+    } catch (err) {
       if (userDetailsRef.current !== user.id) return
+      setUserListingsError(getErrorKey(err))
       setUserListingsState('error')
     }
   }
@@ -661,7 +664,7 @@ export function AdminPage() {
             )}
             {userListingsState === 'error' && (
               <p role="alert" className="mt-2 text-sm text-danger">
-                {t('admin.userListingsError')}
+                {t(userListingsError ?? 'admin.userListingsError')}
               </p>
             )}
             {userListingsState === 'ready' && userListings.length === 0 && (
