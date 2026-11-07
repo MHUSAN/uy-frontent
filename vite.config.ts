@@ -23,7 +23,6 @@ export default defineConfig(({ mode }) => {
       // This proxy is development-only; deployments must set VITE_API_BASE_URL
       // or provide an equivalent reverse proxy.
       proxy: {
-        '/uploads': { target, changeOrigin: true },
         '/api': {
           target,
           changeOrigin: true,

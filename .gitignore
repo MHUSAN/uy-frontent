@@ -25,3 +25,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# user uploads (written by the backend via multer)
+public/uploads
