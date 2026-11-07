@@ -25,7 +25,7 @@ export function InquiriesPage() {
   if (loading) return <PageLoading />
   const list = tab === 'sent' ? sent : received
   return (
-    <section className="mx-auto w-full max-w-5xl px-4 py-8">
+    <section className="mx-auto w-full max-w-6xl px-4 py-8">
       <h1 className="font-display text-2xl text-ink">{t('inquiries.title')}</h1>
       <div className="mt-4">
         <Feedback messageKey={error} />

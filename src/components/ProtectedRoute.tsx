@@ -19,7 +19,7 @@ export function ProtectedRoute({
 
   if (auth.loading) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-4 py-12 text-sm text-muted">
+      <div className="mx-auto w-full max-w-[88rem] px-4 py-12 text-sm text-muted">
         {t('authFlow.loading')}
       </div>
     )

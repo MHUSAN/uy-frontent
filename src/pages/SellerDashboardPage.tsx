@@ -6,21 +6,27 @@ import { deleteProperty, fetchMyProperties } from '@/api/properties'
 import { getErrorKey } from '@/api/errors'
 import { Feedback, PageLoading } from '@/components/Feedback'
 import type { Property } from '@/types/property'
+import { cacheGet, cacheSet } from '@/utils/cache'
 import { formatDate, formatPrice } from '@/utils/format'
 
 export function SellerDashboardPage() {
   const { t, i18n } = useTranslation()
   const [pendingDelete, setPendingDelete] = useState<Property | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [items, setItems] = useState<Property[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<Property[]>(
+    () => cacheGet<Property[]>('mine') ?? [],
+  )
+  const [loading, setLoading] = useState(() => !cacheGet<Property[]>('mine'))
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const load = () => {
-    setLoading(true)
+    if (!cacheGet<Property[]>('mine')) setLoading(true)
     setError(null)
     fetchMyProperties()
-      .then((p) => setItems(p.items))
+      .then((p) => {
+        cacheSet('mine', p.items)
+        setItems(p.items)
+      })
       .catch((err) => setError(getErrorKey(err)))
       .finally(() => setLoading(false))
   }
@@ -42,7 +48,7 @@ export function SellerDashboardPage() {
   }
   if (loading) return <PageLoading />
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-8">
+    <section className="mx-auto w-full max-w-[88rem] px-4 py-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl text-ink">
           {t('account.listings')}

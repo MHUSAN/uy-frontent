@@ -23,6 +23,7 @@ export function getErrorKey(error: unknown): string {
     INVALID_CODE: 'authFlow.invalidCode',
     RATE_LIMITED: 'errors.rate',
     EMAIL_UNAVAILABLE: 'authFlow.unavailable',
+    CONTACT_REQUIRED: 'validation.contact',
   }
   if (api?.code && codeKeys[api.code]) return codeKeys[api.code]
   const message = api?.message ?? ''
@@ -35,6 +36,8 @@ export function getErrorKey(error: unknown): string {
     api?.status === 400
   )
     return 'errors.ownInquiry'
+  if (/description/i.test(message) && api?.status === 400)
+    return 'validation.description'
   if (/phone/i.test(message) && api?.status === 400) return 'validation.phone'
   if (/image|file too large|unexpected field|JPEG|PNG|WEBP|AVIF/i.test(message))
     return 'errors.upload'

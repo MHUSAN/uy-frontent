@@ -11,7 +11,7 @@ import { ThemeToggle } from '@/components/ThemeToggle'
 import { useAuth } from '@/hooks/useAuth'
 
 const DESKTOP_LINK =
-  'inline-flex h-9 items-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-accent-soft hover:text-ink'
+  'inline-flex h-8 items-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-accent-soft hover:text-ink'
 const MOBILE_LINK =
   'flex min-h-11 items-center rounded-md px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-accent-soft'
 
@@ -71,7 +71,7 @@ export function Header() {
     <nav
       aria-label={t('nav.primary')}
       className={
-        mobile ? 'grid gap-0.5' : 'ml-2 hidden items-center gap-0.5 xl:flex'
+        mobile ? 'grid gap-0.5' : 'ml-2 hidden items-center gap-0.5 lg:flex'
       }
     >
       <NavLink
@@ -106,9 +106,9 @@ export function Header() {
   return (
     <header
       ref={header}
-      className="sticky top-0 z-40 border-b border-line bg-canvas"
+      className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur"
     >
-      <div className="mx-auto flex min-h-16 max-w-6xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-14 max-w-[88rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
         <Brand onClick={closeMenu} />
         {navigation(false)}
         <div className="ml-auto flex min-w-0 items-center gap-2">
@@ -146,7 +146,7 @@ export function Header() {
             aria-controls="mobile-navigation"
             aria-label={t(menuOpen ? 'nav.closeMenu' : 'nav.openMenu')}
             onClick={() => setMobilePath(menuOpen ? null : routeKey)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-ink hover:border-accent xl:hidden"
+            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-ink hover:border-accent lg:hidden"
           >
             {menuOpen ? (
               <X size={17} aria-hidden="true" />
@@ -157,14 +157,14 @@ export function Header() {
         </div>
       </div>
       {guest && (
-        <div className="mx-auto flex max-w-6xl items-center justify-end gap-2 border-t border-line px-4 py-2 sm:hidden">
+        <div className="mx-auto flex max-w-[88rem] items-center justify-end gap-2 border-t border-line px-4 py-2 sm:hidden">
           <GuestActions />
         </div>
       )}
       {menuOpen && (
         <div
           id="mobile-navigation"
-          className="max-h-[70vh] overflow-y-auto border-t border-line bg-surface px-4 py-4 sm:px-6 xl:hidden"
+          className="max-h-[70vh] overflow-y-auto border-t border-line bg-surface px-4 py-4 sm:px-6 lg:hidden"
         >
           {navigation(true)}
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 md:hidden">

@@ -56,6 +56,10 @@ export type PropertyCardData = Pick<
   | 'city'
   | 'area'
   | 'rooms'
+  | 'bathrooms'
+  | 'district'
   | 'images'
   | 'status'
+  | 'createdAt'
+  | 'owner'
 >

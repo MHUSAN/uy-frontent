@@ -1,5 +1,6 @@
 import { UserAvatar } from '@/components/AccountMenu'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Check, Clock, Eye, Home, MessageSquare, Pencil, Phone, Send, Trash2, Users, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -8,6 +9,8 @@ import {
   adminListProperties,
   adminListUsers,
   adminSetStatus,
+  adminStats,
+  type AdminStats,
   createCategory,
   deleteCategory,
 } from '@/api/admin'
@@ -86,6 +89,13 @@ export function AdminPage() {
     'loading' | 'ready' | 'error'
   >('loading')
   const [userListingsError, setUserListingsError] = useState<string | null>(null)
+  const [stats, setStats] = useState<AdminStats | null>(null)
+  const refreshStats = useCallback(() => {
+    adminStats().then(setStats).catch(() => undefined)
+  }, [])
+  useEffect(() => {
+    refreshStats()
+  }, [refreshStats, properties, users])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
@@ -237,7 +247,7 @@ export function AdminPage() {
     ? properties.find((property) => property.id === detailsId)
     : null
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-8">
+    <section className="mx-auto w-full max-w-[88rem] px-4 py-8">
       <h1 className="font-display text-2xl text-ink">{t('admin.title')}</h1>
       <div
         className="mt-4 flex flex-wrap gap-2"
@@ -256,6 +266,34 @@ export function AdminPage() {
           </button>
         ))}
       </div>
+      {stats && (
+        <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {[
+            { key: 'properties', value: stats.properties, icon: Home, onClick: () => { setTab('properties'); setStatus(undefined) } },
+            { key: 'pending', value: stats.pending, icon: Clock, tone: 'text-amber-600', onClick: () => { setTab('properties'); setStatus('PENDING') } },
+            { key: 'approved', value: stats.approved, icon: Check, tone: 'text-accent', onClick: () => { setTab('properties'); setStatus('APPROVED') } },
+            { key: 'rejected', value: stats.rejected, icon: X, tone: 'text-danger', onClick: () => { setTab('properties'); setStatus('REJECTED') } },
+            { key: 'users', value: stats.users, icon: Users, onClick: () => setTab('users') },
+            { key: 'inquiries', value: stats.inquiries, icon: MessageSquare },
+          ].map(({ key, value, icon: Icon, tone, onClick }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={onClick}
+              disabled={!onClick}
+              className="rounded-xl border border-line bg-surface p-4 text-left transition-colors enabled:hover:border-accent"
+            >
+              <dt className="flex items-center gap-2 text-xs text-muted">
+                <Icon size={15} aria-hidden="true" className={tone ?? 'text-muted'} />
+                {t(`admin.stats.${key}`)}
+              </dt>
+              <dd className="mt-2 font-display text-3xl text-ink">
+                {formatNumber(value, i18n.language)}
+              </dd>
+            </button>
+          ))}
+        </dl>
+      )}
       <div className="mt-4 space-y-2">
         <Feedback messageKey={error} />
         <Feedback messageKey={success} success />
@@ -292,86 +330,82 @@ export function AdminPage() {
             <span>{t('admin.ownerFilter', { id: ownerId })}</span>
             <button type="button" className="underline" onClick={() => setParams((current) => { current.delete('ownerId'); current.delete('page'); return current })}>{t('common.clear')}</button>
           </div>}
-          <div className="mt-4 grid gap-3">
-            {properties.map((property) => (
-              <article
-                key={property.id}
-                className="min-w-0 rounded-lg border border-line bg-surface p-4"
-              >
-                <div className="flex flex-col justify-between gap-3 md:flex-row">
-                  <div className="min-w-0">
-                    <p className="break-words font-semibold text-ink">
-                      {property.title}
-                    </p>
-                    <p className="mt-1 break-words text-xs leading-relaxed text-muted">
-                      {t(`status.${property.status ?? 'PENDING'}`)} ·{' '}
-                      {locationLabel(property.city, t)} ·{' '}
-                      {t(
-                        property.listingType === 'SALE'
-                          ? 'listingType.sale'
-                          : 'listingType.rent',
-                      )}{' '}
-                      ·{' '}
-                      {formatPrice(
-                        property.price,
-                        property.currency,
-                        i18n.language,
-                      )}{' '}
-                      · {t('property.rooms', { count: property.rooms })}
-                    </p>
-                    <p className="mt-1 break-words text-xs text-muted">
-                      {t('details.seller')}: {property.owner?.fullName}{' '}
-                      {property.owner?.phone}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-start gap-2 md:max-w-xs md:justify-end">
-                    <button
-                      onClick={() => setDetailsId(property.id)}
-                      className="rounded border border-line px-3 py-2 text-xs"
-                    >
-                      {t('admin.details')}
-                    </button>
-                    <Link className="rounded border border-line px-3 py-2 text-xs" to={`/elonlar/${property.id}/tahrir`}>{t('common.edit')}</Link>
-                    <button type="button" disabled={busy || loading} className="rounded border border-line px-3 py-2 text-xs text-danger disabled:opacity-60" onClick={() => setConfirmation({ kind: 'property', property })}>{t('common.delete')}</button>
-                    {(
-                      [
-                        { value: 'APPROVED', key: 'admin.approve' },
-                        { value: 'REJECTED', key: 'admin.reject' },
-                        { value: 'PENDING', key: 'admin.review' },
-                      ] as const
-                    ).map(
-                      (action) =>
-                        property.status !== action.value && (
-                          <button
-                            key={action.value}
-                            disabled={busy || loading}
-                            onClick={() =>
-                              setConfirmation({
-                                kind: 'status',
-                                id: property.id,
-                                next: action.value,
-                              })
-                            }
-                            className={`rounded px-3 py-2 text-xs disabled:opacity-60 ${action.value === 'APPROVED' ? 'bg-accent font-semibold text-on-accent' : 'border border-line'}`}
-                          >
-                            {t(action.key)}
-                          </button>
-                        ),
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {properties.map((property) => {
+              const image = [...(property.images ?? [])].sort((x, y) => x.sortOrder - y.sortOrder)[0]
+              const badge =
+                property.status === 'APPROVED'
+                  ? 'bg-accent-soft text-accent'
+                  : property.status === 'REJECTED'
+                    ? 'bg-danger/10 text-danger'
+                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+              return (
+                <article
+                  key={property.id}
+                  className="flex min-w-0 gap-3 rounded-xl border border-line bg-surface p-3"
+                >
+                  <div className="relative size-24 shrink-0 overflow-hidden rounded-lg bg-canvas sm:size-28">
+                    {image && (
+                      <>
+                        <img src={image.url} alt="" aria-hidden="true" className="absolute inset-0 size-full scale-110 object-cover opacity-60 blur-lg" />
+                        <img src={image.url} alt={image.altText ?? property.title} className="relative size-full object-contain" />
+                      </>
                     )}
                   </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(property.images ?? []).map((image) => (
-                    <img
-                      key={image.id}
-                      src={image.url}
-                      alt={image.altText ?? property.title}
-                      className="h-16 w-20 rounded object-cover"
-                    />
-                  ))}
-                </div>
-              </article>
-            ))}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded px-2 py-0.5 text-[11px] font-semibold ${badge}`}>
+                        {t(`status.${property.status ?? 'PENDING'}`)}
+                      </span>
+                      <span className="text-[11px] text-muted">#{property.id} · {formatDate(property.createdAt, i18n.language)}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-1 break-words font-semibold text-ink">{property.title}</p>
+                    <p className="mt-0.5 line-clamp-1 text-xs text-muted">
+                      {formatPrice(property.price, property.currency, i18n.language)} ·{' '}
+                      {locationLabel(property.city, t)} ·{' '}
+                      {t(property.listingType === 'SALE' ? 'listingType.sale' : 'listingType.rent')} ·{' '}
+                      {t('property.rooms', { count: property.rooms })}
+                    </p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted">
+                      <span className="line-clamp-1">{property.owner?.fullName}</span>
+                      {property.owner?.phone && (
+                        <span className="inline-flex items-center gap-1"><Phone size={11} aria-hidden="true" />{property.owner.phone}</span>
+                      )}
+                      {property.owner?.telegram && (
+                        <span className="inline-flex items-center gap-1"><Send size={11} aria-hidden="true" />{property.owner.telegram}</span>
+                      )}
+                    </p>
+                    <div className="mt-auto flex flex-wrap gap-1.5 pt-2">
+                      {property.status !== 'APPROVED' && (
+                        <button disabled={busy || loading} onClick={() => setConfirmation({ kind: 'status', id: property.id, next: 'APPROVED' })}
+                          className="inline-flex h-8 items-center gap-1 rounded-md bg-accent px-2.5 text-xs font-semibold text-on-accent disabled:opacity-60">
+                          <Check size={13} aria-hidden="true" />{t('admin.approve')}
+                        </button>
+                      )}
+                      {property.status !== 'REJECTED' && (
+                        <button disabled={busy || loading} onClick={() => setConfirmation({ kind: 'status', id: property.id, next: 'REJECTED' })}
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-xs disabled:opacity-60">
+                          <X size={13} aria-hidden="true" />{t('admin.reject')}
+                        </button>
+                      )}
+                      {property.status === 'APPROVED' && (
+                        <button disabled={busy || loading} onClick={() => setConfirmation({ kind: 'status', id: property.id, next: 'PENDING' })}
+                          className="inline-flex h-8 items-center gap-1 rounded-md border border-line px-2.5 text-xs disabled:opacity-60">
+                          <Clock size={13} aria-hidden="true" />{t('admin.review')}
+                        </button>
+                      )}
+                      <button onClick={() => setDetailsId(property.id)} aria-label={t('admin.details')} title={t('admin.details')}
+                        className="inline-flex size-8 items-center justify-center rounded-md border border-line"><Eye size={14} aria-hidden="true" /></button>
+                      <Link to={`/elonlar/${property.id}/tahrir`} aria-label={t('common.edit')} title={t('common.edit')}
+                        className="inline-flex size-8 items-center justify-center rounded-md border border-line"><Pencil size={14} aria-hidden="true" /></Link>
+                      <button type="button" disabled={busy || loading} aria-label={t('common.delete')} title={t('common.delete')}
+                        onClick={() => setConfirmation({ kind: 'property', property })}
+                        className="inline-flex size-8 items-center justify-center rounded-md border border-line text-danger disabled:opacity-60"><Trash2 size={14} aria-hidden="true" /></button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
             {!loading && !error && properties.length === 0 && (
               <p className="text-sm text-muted">
                 {t('home.listings.emptyTitle')}

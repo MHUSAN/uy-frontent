@@ -14,6 +14,26 @@ export async function adminListProperties(status?: string, page = 1, limit = 20,
   }
 }
 
+export interface AdminStats {
+  properties: number
+  pending: number
+  approved: number
+  rejected: number
+  users: number
+  categories: number
+  inquiries: number
+  favorites: number
+}
+
+export async function adminStats(): Promise<AdminStats> {
+  try {
+    const { data } = await apiClient.get<AdminStats>('/admin/stats')
+    return data
+  } catch (error) {
+    throw normalizeApiError(error)
+  }
+}
+
 export async function adminSetStatus(id: number, status: string) {
   try {
     const { data } = await apiClient.patch(`/admin/properties/${id}/status`, { status })

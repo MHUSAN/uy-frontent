@@ -23,7 +23,7 @@ export function PageLoading() {
   return (
     <p
       role="status"
-      className="mx-auto w-full max-w-5xl px-4 py-12 text-sm text-muted"
+      className="mx-auto w-full max-w-6xl px-4 py-12 text-sm text-muted"
     >
       {t('common.loading')}
     </p>

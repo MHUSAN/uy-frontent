@@ -29,7 +29,6 @@ export async function registerUser(payload: {
   fullName: string
   email: string
   password: string
-  phone?: string
 }): Promise<{ requiresVerification: true; email: string; retryAfterSeconds: number }> {
   try {
     const { data } = await apiClient.post<{ requiresVerification: true; email: string; retryAfterSeconds: number }>('/auth/register', payload)

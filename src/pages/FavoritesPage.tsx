@@ -4,20 +4,23 @@ import { Link } from 'react-router-dom'
 import { fetchFavorites, removeFavorite } from '@/api/favorites'
 import { getErrorKey } from '@/api/errors'
 import { Feedback, PageLoading } from '@/components/Feedback'
+import { cacheGet, cacheSet } from '@/utils/cache'
 import { locationLabel } from '@/utils/localize'
 
 export function FavoritesPage() {
   const { t } = useTranslation()
-  const [items, setItems] = useState<
-    { id: number; property: { id: number; title: string; city: string } }[]
-  >([])
-  const [loading, setLoading] = useState(true)
+  type Item = { id: number; property: { id: number; title: string; city: string } }
+  const [items, setItems] = useState<Item[]>(() => cacheGet<Item[]>('favs') ?? [])
+  const [loading, setLoading] = useState(() => !cacheGet<Item[]>('favs'))
   const [error, setError] = useState<string | null>(null)
   const load = () => {
-    setLoading(true)
+    if (!cacheGet<Item[]>('favs')) setLoading(true)
     setError(null)
     fetchFavorites()
-      .then(setItems)
+      .then((list) => {
+        cacheSet('favs', list)
+        setItems(list)
+      })
       .catch((err) => setError(getErrorKey(err)))
       .finally(() => setLoading(false))
   }
@@ -34,7 +37,7 @@ export function FavoritesPage() {
   }
   if (loading) return <PageLoading />
   return (
-    <section className="mx-auto w-full max-w-6xl px-4 py-8">
+    <section className="mx-auto w-full max-w-[88rem] px-4 py-8">
       <h1 className="font-display text-2xl text-ink">
         {t('account.favorites')}
       </h1>

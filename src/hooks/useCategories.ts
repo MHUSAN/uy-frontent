@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { fetchCategories } from '@/api/categories'
 import { ApiError } from '@/api/errors'
 import type { Category } from '@/types/property'
+import { cacheGet, cacheSet } from '@/utils/cache'
 
 export type CategoryStatus = 'loading' | 'ready' | 'empty' | 'error'
 
@@ -18,8 +19,15 @@ const INITIAL_STATE: CategoriesState = {
   error: null,
 }
 
+const CACHE_KEY = 'categories'
+
 export function useCategories() {
-  const [state, setState] = useState<CategoriesState>(INITIAL_STATE)
+  const [state, setState] = useState<CategoriesState>(() => {
+    const cached = cacheGet<Category[]>(CACHE_KEY)
+    return cached?.length
+      ? { status: 'ready', categories: cached, error: null }
+      : INITIAL_STATE
+  })
   const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
@@ -31,6 +39,7 @@ export function useCategories() {
           return
         }
 
+        cacheSet(CACHE_KEY, categories)
         setState({
           status: categories.length > 0 ? 'ready' : 'empty',
           categories,
@@ -42,6 +51,7 @@ export function useCategories() {
           return
         }
 
+        if (cacheGet<Category[]>(CACHE_KEY)?.length) return
         setState({
           status: 'error',
           categories: [],
@@ -57,7 +67,7 @@ export function useCategories() {
   }, [attempt])
 
   const retry = useCallback(() => {
-    setState(INITIAL_STATE)
+    setState((s) => (s.categories.length ? s : INITIAL_STATE))
     setAttempt((current) => current + 1)
   }, [])
 

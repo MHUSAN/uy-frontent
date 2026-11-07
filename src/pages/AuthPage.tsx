@@ -27,11 +27,6 @@ function saveContext(mode: Mode, email: string, seconds = 60) {
 const fieldClass =
   'h-12 w-full min-w-0 rounded-lg border border-line bg-canvas px-3 text-base text-ink transition-colors focus:border-accent'
 
-function normalizePhone(value: string): string {
-  const digits = value.replace(/\D/g, '')
-  return digits.slice(0, 9)
-}
-
 function PasswordField({
   id,
   label,
@@ -94,7 +89,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
   const location = useLocation()
   const [email, setEmail] = useState(() => readContext(mode).email || '')
   const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [code, setCode] = useState('')
@@ -168,15 +162,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
     setError('')
     setNotice('')
 
-    let normalizedPhone = ''
-    if (mode === 'register') {
-      normalizedPhone = normalizePhone(phone)
-      if (!normalizedPhone) {
-        setError('phoneRequired')
-        return
-      }
-    }
-
     if (
       mode === 'register' &&
       (fullName.trim().length < 2 || fullName.trim().length > 100)
@@ -219,7 +204,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
           fullName: fullName.trim(),
           email: email.trim(),
           password,
-          phone: normalizedPhone,
         })
         saveContext('verify', result.email, result.retryAfterSeconds)
         navigate('/verify-email', { state: { notice: 'sent' } })
@@ -290,7 +274,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
           aria-describedby={error ? 'auth-error' : undefined}
         >
           {mode === 'register' && (
-            <div className="space-y-3">
+            <div>
               <label htmlFor="fullName" className="mb-2 block text-sm font-medium">
                 {t('authFlow.fullName')}
               </label>
@@ -305,29 +289,6 @@ export function AuthPage({ mode }: { mode: Mode }) {
                 maxLength={100}
                 className={fieldClass}
               />
-              <div className="relative">
-                <span
-                  className="absolute left-2 top-1/2 -translate-y-1/2 text-muted/60 text-sm select-none"
-                >
-                  +998
-                </span>
-                <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(normalizePhone(e.target.value))}
-                  maxLength={12}
-                  required
-                  className={`${fieldClass} pr-12 pl-8`}
-                  aria-describedby="phoneHint"
-                />
-                <p id="phoneHint" className="mt-2 text-xs text-muted">
-                  +998 90 123 45 67
-                </p>
-              </div>
             </div>
           )}
           <div>

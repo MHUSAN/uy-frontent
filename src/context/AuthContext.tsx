@@ -1,4 +1,4 @@
-import { createContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 
 import { fetchCurrentUser, getStoredToken, setStoredToken } from '@/api/auth'
@@ -13,13 +13,36 @@ interface AuthContextValue {
   refresh: () => Promise<void>
 }
 
+const USER_KEY = 'tezuy.user'
+function readUser(): User | null {
+  try {
+    return getStoredToken()
+      ? (JSON.parse(window.localStorage.getItem(USER_KEY) || 'null') as User | null)
+      : null
+  } catch {
+    return null
+  }
+}
+function writeUser(user: User | null) {
+  try {
+    if (user) window.localStorage.setItem(USER_KEY, JSON.stringify(user))
+    else window.localStorage.removeItem(USER_KEY)
+  } catch {
+    /* optional */
+  }
+}
+
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUserState] = useState<User | null>(() => readUser())
+  const setUser = useCallback((next: User | null) => {
+    writeUser(next)
+    setUserState(next)
+  }, [])
   const [token, setToken] = useState<string | null>(() => getStoredToken())
-  const [loading, setLoading] = useState<boolean>(() =>
-    Boolean(getStoredToken()),
+  const [loading, setLoading] = useState<boolean>(
+    () => Boolean(getStoredToken()) && !readUser(),
   )
 
   useEffect(() => {
@@ -45,7 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [token])
+  }, [token, setUser])
 
   useEffect(() => {
     const clear = () => {
@@ -66,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('tezuy:unauthorized', clear)
       window.removeEventListener('storage', sync)
     }
-  }, [])
+  }, [setUser])
 
   const value = useMemo(
     () => ({
@@ -90,7 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u)
       },
     }),
-    [user, token, loading],
+    [user, token, loading, setUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

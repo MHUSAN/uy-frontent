@@ -59,24 +59,27 @@ export function YandexMap({
   useEffect(() => {
     select.current = onSelect
   }, [onSelect])
+  const placemark = useRef<any>(null)
+  const sdkRef = useRef<any>(null)
+  const coordsRef = useRef({ latitude, longitude })
+  useEffect(() => {
+    coordsRef.current = { latitude, longitude }
+  }, [latitude, longitude])
   useEffect(() => {
     if (!key) return
     let cancelled = false
     loadSdk(key, providerLocale)
       .then((sdk) => {
         if (cancelled || !container.current) return
-        const located = latitude != null && longitude != null
-        const center = located ? [latitude, longitude] : [41.3, 69.28]
+        sdkRef.current = sdk
+        const { latitude: lat0, longitude: lng0 } = coordsRef.current
+        const located = lat0 != null && lng0 != null
         const instance = new sdk.Map(container.current, {
-          center,
-          zoom: 13,
+          center: located ? [lat0, lng0] : [41.3, 69.28],
+          zoom: located ? 15 : 11,
           controls: [],
         })
         map.current = instance
-        if (located)
-          instance.geoObjects.add(
-            new sdk.Placemark(center, {}, { draggable: selectable }),
-          )
         if (selectable)
           instance.events.add('click', (event: any) => {
             const [lat, lng] = event.get('coords')
@@ -91,8 +94,30 @@ export function YandexMap({
       cancelled = true
       map.current?.destroy()
       map.current = null
+      placemark.current = null
     }
-  }, [key, providerLocale, latitude, longitude, selectable])
+  }, [key, providerLocale, selectable])
+  useEffect(() => {
+    const instance = map.current
+    const sdk = sdkRef.current
+    if (status !== 'ready' || !instance || !sdk) return
+    if (latitude == null || longitude == null) {
+      if (placemark.current) instance.geoObjects.remove(placemark.current)
+      placemark.current = null
+      return
+    }
+    const point = [latitude, longitude]
+    if (!placemark.current) {
+      placemark.current = new sdk.Placemark(point, {}, { draggable: selectable })
+      if (selectable)
+        placemark.current.events.add('dragend', () => {
+          const [lat, lng] = placemark.current.geometry.getCoordinates()
+          select.current?.(lat, lng)
+        })
+      instance.geoObjects.add(placemark.current)
+    } else placemark.current.geometry.setCoordinates(point)
+    instance.setCenter(point, Math.max(instance.getZoom(), 14))
+  }, [status, latitude, longitude, selectable])
   if (status === 'unavailable')
     return (
       <div className="rounded-md border border-dashed border-line bg-canvas px-4 py-6 text-sm text-muted">
