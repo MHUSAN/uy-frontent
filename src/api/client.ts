@@ -7,7 +7,8 @@ export const API_BASE_URL = configuredBaseUrl || '/api'
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15_000,
+  // Free hosting may need up to ~50s to wake the backend: be patient.
+  timeout: 45_000,
   headers: {
     Accept: 'application/json',
   },
@@ -43,6 +44,25 @@ export function normalizeApiError(error: unknown): Error {
   }
   return error instanceof Error ? error : new Error('Unknown error')
 }
+
+const RETRY_DELAYS = [2_000, 5_000, 10_000]
+
+function isColdStart(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false
+  const status = error.response?.status
+  return status === 502 || status === 503 || status === 504 || (!error.response && error.code !== 'ERR_CANCELED')
+}
+
+// GET requests are safe to repeat while the backend wakes up.
+apiClient.interceptors.response.use(undefined, async (error) => {
+  const config = error?.config as (typeof error.config & { __retry?: number }) | undefined
+  if (!config || config.method !== 'get' || !isColdStart(error)) throw error
+  const attempt = config.__retry ?? 0
+  if (attempt >= RETRY_DELAYS.length) throw error
+  config.__retry = attempt + 1
+  await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[attempt]))
+  return apiClient.request(config)
+})
 
 apiClient.interceptors.response.use(
   (response) => response,

@@ -1,18 +1,11 @@
 import { locationLabel } from '@/utils/localize'
-import {
-  Bath,
-  BedDouble,
-  Heart,
-  ImageOff,
-  MapPin,
-  Maximize2,
-  Phone,
-  Send,
-} from 'lucide-react'
+import { BedDouble, Heart, ImageOff, Maximize2 } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { fetchProperty } from '@/api/properties'
 import type { PropertyCardData } from '@/types/property'
 import { formatArea, formatPrice } from '@/utils/format'
 
@@ -22,6 +15,8 @@ interface PropertyCardProps {
   onFavoriteToggle?: (property: PropertyCardData) => void
 }
 
+const NEW_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+
 export function PropertyCard({
   property,
   isFavorite = false,
@@ -29,169 +24,116 @@ export function PropertyCard({
 }: PropertyCardProps) {
   const { t, i18n } = useTranslation()
   const [imageFailed, setImageFailed] = useState(false)
-
+  const queryClient = useQueryClient()
   const language = i18n.resolvedLanguage ?? i18n.language
 
-  const primaryImage = useMemo(() => {
-    const images = property.images ?? []
-    return [...images].sort((a, b) => a.sortOrder - b.sortOrder)[0]
-  }, [property.images])
-
-  const phone = property.owner?.phone
-  const telegram = property.owner?.telegram
-
+  const primaryImage = useMemo(
+    () =>
+      [...(property.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder)[0],
+    [property.images],
+  )
   const showImage = Boolean(primaryImage) && !imageFailed
+  const created = new Date(property.createdAt).getTime()
+  // eslint-disable-next-line react-hooks/purity
+  const isNew = Number.isFinite(created) && Date.now() - created < NEW_WINDOW_MS
 
   const location =
     property.address && property.address !== property.city
-      ? `${locationLabel(property.city, t)}, ${property.address}`
+      ? `${property.address}, ${locationLabel(property.city, t)}`
       : locationLabel(property.city, t)
 
+  // Warm the detail page cache when the user is about to open it.
+  const prefetch = () =>
+    void queryClient.prefetchQuery({
+      queryKey: ['property', property.id],
+      queryFn: () => fetchProperty(property.id),
+      staleTime: 60_000,
+    })
+
   return (
-    <article className="relative overflow-hidden rounded-lg border border-line bg-surface transition-colors hover:border-accent/40">
-      <div className="relative aspect-[4/3] overflow-hidden bg-canvas">
+    <article
+      onPointerEnter={prefetch}
+      onFocusCapture={prefetch}
+      className="group relative overflow-hidden rounded-2xl bg-surface shadow-[0_2px_14px_rgba(0,0,0,0.07)] transition-shadow hover:shadow-[0_8px_26px_rgba(0,0,0,0.12)]"
+    >
+      <div className="relative aspect-[4/3] overflow-hidden bg-soft">
         <Link
           to={`/elonlar/${property.id}`}
           aria-label={property.title}
-          className="absolute inset-0 z-0"
+          className="absolute inset-0 z-0 rounded-t-2xl"
         />
         {showImage && primaryImage ? (
-          <>
-            <img
-              src={primaryImage.url}
-              alt=""
-              aria-hidden="true"
-              loading="lazy"
-              className="pointer-events-none absolute inset-0 size-full scale-110 object-cover opacity-60 blur-xl"
-            />
-            <img
-              src={primaryImage.url}
-              alt={primaryImage.altText?.trim() || property.title}
-              loading="lazy"
-              decoding="async"
-              onError={() => setImageFailed(true)}
-              className="pointer-events-none relative size-full object-contain"
-            />
-          </>
+          <img
+            src={primaryImage.url}
+            alt={primaryImage.altText?.trim() || property.title}
+            width={640}
+            height={480}
+            loading="lazy"
+            decoding="async"
+            onError={() => setImageFailed(true)}
+            className="pointer-events-none size-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
         ) : (
           <div className="pointer-events-none flex size-full flex-col items-center justify-center gap-1.5 text-muted">
-            <ImageOff size={22} strokeWidth={1.6} aria-hidden="true" />
-            <span className="text-[11px]">{t('property.noImage')}</span>
+            <ImageOff size={24} strokeWidth={1.6} aria-hidden="true" />
+            <span className="text-xs">{t('property.noImage')}</span>
           </div>
         )}
 
-        <span
-          className={`pointer-events-none absolute left-2.5 top-2.5 z-10 rounded border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] ${
-            property.listingType === 'SALE'
-              ? 'border-accent/25 bg-accent-soft text-accent'
-              : 'border-line bg-canvas text-ink'
-          }`}
-        >
-          {t(
-            property.listingType === 'SALE'
-              ? 'listingType.sale'
-              : 'listingType.rent',
+        <div className="pointer-events-none absolute left-3 top-3 z-10 flex gap-1.5">
+          {isNew && (
+            <span className="rounded-lg bg-accent px-2.5 py-1 text-xs font-bold text-on-accent">
+              {t('listing.isNew')}
+            </span>
           )}
-        </span>
-
-        <button
-          type="button"
-          disabled={!onFavoriteToggle}
-          aria-pressed={isFavorite}
-          aria-label={
-            isFavorite ? t('property.favoriteRemove') : t('property.favorite')
-          }
-          title={
-            onFavoriteToggle
-              ? isFavorite
-                ? t('property.favoriteRemove')
-                : t('property.favorite')
-              : t('property.favoriteUnavailable')
-          }
-          onClick={() => onFavoriteToggle?.(property)}
-          className={`absolute right-2.5 top-2.5 z-10 inline-flex size-8 items-center justify-center rounded-md border border-line bg-surface transition-colors ${
-            isFavorite ? 'text-accent' : 'text-muted hover:text-accent'
-          } disabled:opacity-70`}
-        >
-          <Heart
-            size={15}
-            strokeWidth={1.9}
-            aria-hidden="true"
-            className={isFavorite ? 'fill-current' : ''}
-          />
-        </button>
+          <span className="rounded-lg bg-white/95 px-2.5 py-1 text-xs font-semibold text-ink">
+            {t(property.listingType === 'SALE' ? 'listingType.sale' : 'listingType.rent')}
+          </span>
+        </div>
       </div>
 
-      <div className="p-3.5">
-        <p className="flex items-baseline gap-1 text-[17px] font-semibold tracking-[-0.01em] text-ink">
-          {formatPrice(property.price, property.currency, language)}
-          {property.listingType === 'RENT' ? (
-            <span className="text-xs font-medium text-muted">
-              {t('property.perMonth')}
-            </span>
-          ) : null}
-        </p>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <p className="flex items-baseline gap-1 text-xl font-bold tracking-tight text-ink">
+            {formatPrice(property.price, property.currency, language)}
+            {property.listingType === 'RENT' && (
+              <span className="text-xs font-medium text-muted">{t('property.perMonth')}</span>
+            )}
+          </p>
+          <button
+            type="button"
+            disabled={!onFavoriteToggle}
+            aria-pressed={isFavorite}
+            aria-label={isFavorite ? t('property.favoriteRemove') : t('property.favorite')}
+            onClick={() => onFavoriteToggle?.(property)}
+            className="-mr-2 -mt-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:text-pink-500"
+          >
+            <Heart
+              size={22}
+              strokeWidth={1.7}
+              aria-hidden="true"
+              className={isFavorite ? 'fill-pink-500 text-pink-500' : ''}
+            />
+          </button>
+        </div>
 
-        <h3 className="mt-1 line-clamp-2 text-sm font-medium leading-5 text-ink">
-          <Link to={`/elonlar/${property.id}`} className="hover:text-accent">
+        <h3 className="mt-1 line-clamp-1 text-sm font-semibold text-ink">
+          <Link to={`/elonlar/${property.id}`} className="hover:underline">
             {property.title}
           </Link>
         </h3>
+        <p className="mt-1 line-clamp-2 min-h-10 text-sm leading-5 text-muted">{location}</p>
 
-        <p className="mt-1 flex items-start gap-1 text-xs leading-5 text-muted">
-          <MapPin
-            size={13}
-            strokeWidth={1.8}
-            aria-hidden="true"
-            className="mt-1 shrink-0"
-          />
-          <span className="line-clamp-1">{location}</span>
-        </p>
-
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line pt-2.5 text-xs text-muted">
-          <span className="inline-flex items-center gap-1">
-            <BedDouble size={13} strokeWidth={1.8} aria-hidden="true" />
+        <div className="mt-3 flex items-center gap-4 border-t border-line pt-3 text-xs font-medium text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <BedDouble size={15} strokeWidth={1.8} aria-hidden="true" />
             {t('property.rooms', { count: property.rooms })}
           </span>
-          <span className="inline-flex items-center gap-1">
-            <Maximize2 size={13} strokeWidth={1.8} aria-hidden="true" />
-            {t('property.area', {
-              value: formatArea(property.area, language),
-            })}
+          <span className="inline-flex items-center gap-1.5">
+            <Maximize2 size={14} strokeWidth={1.8} aria-hidden="true" />
+            {t('property.area', { value: formatArea(property.area, language) })}
           </span>
-          {property.bathrooms != null && (
-            <span className="inline-flex items-center gap-1">
-              <Bath size={13} strokeWidth={1.8} aria-hidden="true" />
-              {t('details.bathrooms', { count: property.bathrooms })}
-            </span>
-          )}
         </div>
-
-        {(phone || telegram) && (
-          <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-2.5">
-            {phone && (
-              <a
-                href={`tel:${phone}`}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs font-medium text-ink hover:border-accent hover:text-accent"
-              >
-                <Phone size={13} strokeWidth={1.9} aria-hidden="true" />
-                {phone}
-              </a>
-            )}
-            {telegram && (
-              <a
-                href={`https://t.me/${telegram.replace(/^@/, '')}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={t('details.telegramOpen')}
-                className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-line px-2.5 text-xs font-medium text-ink hover:border-accent hover:text-accent"
-              >
-                <Send size={13} strokeWidth={1.9} aria-hidden="true" />
-                {telegram.startsWith('@') ? telegram : `@${telegram}`}
-              </a>
-            )}
-          </div>
-        )}
       </div>
     </article>
   )

@@ -1,66 +1,36 @@
 import { apiClient, normalizeApiError } from '@/api/client'
-import { mapProperty, type PropertyPage } from '@/api/properties'
+import { mapPage, type PropertyPage } from '@/api/properties'
 import type { User } from '@/types/auth'
-import type { Category } from '@/types/property'
+import type { Category, PropertyStatus } from '@/types/property'
 
-export async function adminListProperties(status?: string, page = 1, limit = 20, ownerId?: number) {
+export async function adminListProperties(status?: PropertyStatus, page = 1, limit = 12): Promise<PropertyPage> {
   try {
     const { data } = await apiClient.get('/admin/properties', {
-      params: { status, page, limit, ownerId },
+      params: { ...(status ? { status } : {}), page, limit },
     })
-    return { ...data, items: data.items.map(mapProperty) } as PropertyPage
+    return mapPage(data, page, limit)
   } catch (error) {
     throw normalizeApiError(error)
   }
 }
 
-export interface AdminStats {
-  properties: number
-  pending: number
-  approved: number
-  rejected: number
-  users: number
-  categories: number
-  inquiries: number
-  favorites: number
-}
-
-export async function adminStats(): Promise<AdminStats> {
-  try {
-    const { data } = await apiClient.get<AdminStats>('/admin/stats')
-    return data
-  } catch (error) {
-    throw normalizeApiError(error)
-  }
-}
-
-export async function adminSetStatus(id: number, status: string) {
+export async function adminSetStatus(id: number, status: 'APPROVED' | 'REJECTED') {
   try {
     const { data } = await apiClient.patch(`/admin/properties/${id}/status`, { status })
-    return data as any
+    return data as unknown
   } catch (error) {
     throw normalizeApiError(error)
   }
 }
 
-export async function adminListUsers(
-  page = 1,
-  q?: string,
-  role?: 'USER' | 'ADMIN',
-) {
+/** GET /admin/users returns a plain array, newest first. */
+export async function adminListUsers(): Promise<User[]> {
   try {
-    const { data } = await apiClient.get('/admin/users', {
-      params: { page, limit: 20, ...(q ? { q } : {}), ...(role ? { role } : {}) },
-    })
-    return data as { items: User[]; total: number; totalPages: number }
+    const { data } = await apiClient.get('/admin/users')
+    return Array.isArray(data) ? (data as User[]) : []
   } catch (error) {
     throw normalizeApiError(error)
   }
-}
-
-export async function adminDeleteUser(id: number) {
-  try { await apiClient.delete(`/admin/users/${id}`) }
-  catch (error) { throw normalizeApiError(error) }
 }
 
 export async function createCategory(payload: { name: string; slug: string }) {

@@ -25,13 +25,15 @@ export interface AuthResponse {
   accessToken: string
 }
 
+/** Registration returns the created user and NO token: the user logs in afterwards. */
 export async function registerUser(payload: {
   fullName: string
   email: string
   password: string
-}): Promise<{ requiresVerification: true; email: string; retryAfterSeconds: number }> {
+  phone?: string
+}): Promise<User> {
   try {
-    const { data } = await apiClient.post<{ requiresVerification: true; email: string; retryAfterSeconds: number }>('/auth/register', payload)
+    const { data } = await apiClient.post<User>('/auth/register', payload)
     return data
   } catch (error) {
     throw normalizeApiError(error)
@@ -62,7 +64,6 @@ export async function fetchCurrentUser(): Promise<User> {
 export async function updateCurrentUser(payload: {
   fullName?: string
   phone?: string
-  telegram?: string
 }): Promise<User> {
   try {
     const { data } = await apiClient.patch<User>('/users/me', payload)
@@ -79,10 +80,4 @@ export async function fetchMyProfile(): Promise<User> {
   } catch (error) {
     throw normalizeApiError(error)
   }
-}
-
-export async function submitAuthCode(action: 'verify-email' | 'resend-otp' | 'forgot-password' | 'reset-password', payload: { email: string; code?: string; password?: string }): Promise<{ success?: boolean; retryAfterSeconds?: number }> {
-  try {
-    return (await apiClient.post(`/auth/${action}`, payload)).data
-  } catch (error) { throw normalizeApiError(error) }
 }

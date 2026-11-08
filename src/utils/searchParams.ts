@@ -1,50 +1,47 @@
-import { isRegionId } from '@/types/location'
 import {
   EMPTY_FILTERS,
   sanitizeNumericInput,
   type SearchFilters,
+  type SortValue,
 } from '@/types/search'
 
-const VALID_ROOM_VALUES = new Set(['1', '2', '3', '4', '5'])
+const SORTS: SortValue[] = ['newest', 'price_asc', 'price_desc']
 
+/** URL keys mirror the API's query parameter names. */
 export function readFilters(params: URLSearchParams): SearchFilters {
-  const listingType = params.get('type')
-  const region = params.get('region')
+  const type = params.get('type')
   const rooms = params.get('rooms') ?? ''
-
+  const sort = params.get('sort') as SortValue | null
   return {
     ...EMPTY_FILTERS,
-    query: params.get('q') ?? '',
-    listingType: listingType === 'RENT' ? 'RENT' : 'SALE',
-    region: isRegionId(region) ? region : '',
+    city: params.get('city') ?? '',
+    listingType: type === 'SALE' || type === 'RENT' ? type : '',
     categorySlug: params.get('category') ?? '',
-    minPrice: sanitizeNumericInput(params.get('min') ?? ''),
-    maxPrice: sanitizeNumericInput(params.get('max') ?? ''),
-    rooms: VALID_ROOM_VALUES.has(rooms) ? rooms : '',
-    district: params.get('district') ?? '',
+    minPrice: sanitizeNumericInput(params.get('minPrice') ?? ''),
+    maxPrice: sanitizeNumericInput(params.get('maxPrice') ?? ''),
+    rooms: /^[1-9]$/.test(rooms) ? rooms : '',
+    sort: sort && SORTS.includes(sort) ? sort : 'newest',
   }
 }
 
-export function writeFilters(filters: SearchFilters): Record<string, string> {
-  const params: Record<string, string> = {
-    type: filters.listingType,
-  }
+export function readPage(params: URLSearchParams): number {
+  const page = Number(params.get('page'))
+  return Number.isInteger(page) && page >= 1 ? page : 1
+}
 
-  const optionalValues: Array<[string, string]> = [
-    ['q', filters.query.trim()],
-    ['region', filters.region],
+export function writeFilters(
+  filters: SearchFilters,
+  page = 1,
+): Record<string, string> {
+  const entries: Array<[string, string]> = [
+    ['city', filters.city.trim()],
+    ['type', filters.listingType],
     ['category', filters.categorySlug],
-    ['min', filters.minPrice],
-    ['max', filters.maxPrice],
+    ['minPrice', filters.minPrice],
+    ['maxPrice', filters.maxPrice],
     ['rooms', filters.rooms],
-    ['district', filters.district],
+    ['sort', filters.sort === 'newest' ? '' : filters.sort],
+    ['page', page > 1 ? String(page) : ''],
   ]
-
-  for (const [key, value] of optionalValues) {
-    if (value) {
-      params[key] = value
-    }
-  }
-
-  return params
+  return Object.fromEntries(entries.filter(([, value]) => value))
 }

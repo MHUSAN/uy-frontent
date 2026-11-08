@@ -8,23 +8,14 @@
       name="description"
       content="O‘zbekiston bo‘ylab ko‘chmas mulkni sotib olish va ijaraga olish."
     />
-    <meta name="theme-color" content="#f5f7f5" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0e1310" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#141414" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>TezUy — O‘zbekistondagi ko‘chmas mulk</title>
     <script>
       ;(() => {
         try {
-          const storedTheme = localStorage.getItem('tezuy.theme')
-          const prefersDark = window.matchMedia(
-            '(prefers-color-scheme: dark)',
-          ).matches
-          const isDark =
-            storedTheme === 'dark' ||
-            ((!storedTheme || storedTheme === 'system') && prefersDark)
-
-          document.documentElement.classList.toggle('dark', isDark)
-          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light'
-
           const storedLanguage = localStorage.getItem('tezuy.language')
           if (['uz', 'ru', 'en'].includes(storedLanguage)) {
             document.documentElement.lang = storedLanguage

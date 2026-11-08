@@ -11,7 +11,7 @@ export function Feedback({
   return messageKey ? (
     <p
       role={success ? 'status' : 'alert'}
-      className={`break-words text-sm ${success ? 'text-accent' : 'text-danger'}`}
+      className={`break-words text-sm ${success ? 'text-accent-ink' : 'text-danger'}`}
     >
       {t(messageKey)}
     </p>

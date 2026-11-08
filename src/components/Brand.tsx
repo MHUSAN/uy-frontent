@@ -3,37 +3,25 @@ import { Link } from 'react-router-dom'
 interface BrandProps {
   className?: string
   onClick?: () => void
+  /** `dark` = placed on the black navbar, `light` = on a white surface. */
+  tone?: 'dark' | 'light'
 }
 
-/**
- * The two logo files are theme variants of the same artwork: dark ink and
- * green on light, white on dark. They switch through the `.dark` class that
- * the theme provider applies to `<html>`, so System theme follows too.
- */
-export function Brand({ className = '', onClick }: BrandProps) {
+export function Brand({ className = '', onClick, tone = 'dark' }: BrandProps) {
   return (
     <Link
       to="/"
       aria-label="TezUy"
       onClick={onClick}
-      className={`inline-flex shrink-0 items-center ${className}`}
+      className={`inline-flex shrink-0 items-center rounded-md ${className}`}
     >
       <img
-        src="/tezuy-logo-light.png"
+        src={tone === 'dark' ? '/tezuy-logo-dark.png' : '/tezuy-logo-light.png'}
         alt=""
         width={496}
         height={160}
         draggable={false}
-        className="block h-7 w-auto select-none dark:hidden sm:h-8"
-      />
-      <img
-        src="/tezuy-logo-dark.png"
-        alt=""
-        width={496}
-        height={160}
-        draggable={false}
-        aria-hidden="true"
-        className="hidden h-7 w-auto select-none dark:block sm:h-8"
+        className="block h-7 w-auto select-none sm:h-8"
       />
     </Link>
   )

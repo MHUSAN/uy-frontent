@@ -1,274 +1,268 @@
-import { getErrorKey } from '@/api/errors'
-import { categoryLabel } from '@/utils/localize'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { SlidersHorizontal, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router-dom'
 
-import { CategorySection } from '@/components/CategorySection'
-import { PropertyGrid } from '@/components/PropertyGrid'
-import { SearchPanel } from '@/components/SearchPanel'
-import { useCategories } from '@/hooks/useCategories'
-import type { PropertyCardData } from '@/types/property'
-import { EMPTY_FILTERS, parsePrice, type SearchFilters } from '@/types/search'
-import { readFilters, writeFilters } from '@/utils/searchParams'
-import { scrollToElement } from '@/utils/scroll'
+import { getErrorKey } from '@/api/errors'
 import { fetchProperties } from '@/api/properties'
-import { cacheGet, cacheSet } from '@/utils/cache'
+import { FilterSidebar } from '@/components/FilterSidebar'
+import { Pagination } from '@/components/Pagination'
+import { PropertyGrid, type PropertyGridState } from '@/components/PropertyGrid'
+import { PropertyCard } from '@/components/PropertyCard'
+import { useCategories } from '@/hooks/useCategories'
+import { useFavorites } from '@/hooks/useFavorites'
+import { clearRecentlyViewed, useRecentlyViewed } from '@/hooks/useRecentlyViewed'
+import {
+  countActiveFilters,
+  EMPTY_FILTERS,
+  hasInvalidPriceRange,
+  type SearchFilters,
+  type SortValue,
+} from '@/types/search'
+import { readFilters, readPage, writeFilters } from '@/utils/searchParams'
 
 const PAGE_SIZE = 12
-type SortValue = 'newest' | 'oldest' | 'price_asc' | 'price_desc'
-const SORT_OPTIONS: SortValue[] = ['newest', 'oldest', 'price_asc', 'price_desc']
+const CITY_DEBOUNCE_MS = 500
+const SORT_OPTIONS: SortValue[] = ['newest', 'price_asc', 'price_desc']
 
 export function HomePage() {
   const { t } = useTranslation()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const [filters, setFilters] = useState<SearchFilters>(() =>
-    readFilters(searchParams),
-  )
+  const [params, setParams] = useSearchParams()
+  const queryKey = params.toString()
+  const applied = useMemo(() => readFilters(new URLSearchParams(queryKey)), [queryKey])
+  const page = useMemo(() => readPage(new URLSearchParams(queryKey)), [queryKey])
+
+  const [draft, setDraft] = useState<SearchFilters>(applied)
   const [priceError, setPriceError] = useState(false)
-  const submitted = searchParams.size > 0
-  const queryKey = searchParams.toString()
-  const requestId = useRef(0)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const openButton = useRef<HTMLButtonElement>(null)
 
   const categories = useCategories()
+  const favorites = useFavorites()
+  const recent = useRecentlyViewed()
 
-  const [properties, setProperties] = useState<PropertyCardData[]>([])
-  const [total, setTotal] = useState(0)
-  const [pageNo, setPageNo] = useState(1)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const activeFilters = useRef<Partial<SearchFilters>>({})
-  const [sort, setSort] = useState<SortValue>('newest')
-  const sortRef = useRef<SortValue>('newest')
-  const [gridState, setGridState] = useState<
-    'ready' | 'loading' | 'empty' | 'error' | 'unavailable'
-  >('loading')
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Cached pages render instantly, then refresh from the server in the background.
+  const listing = useQuery({
+    queryKey: ['properties', applied, page],
+    queryFn: () => fetchProperties(applied, page, PAGE_SIZE, applied.sort),
+    placeholderData: keepPreviousData,
+  })
+  const items = listing.data?.items ?? []
+  const total = listing.data?.total ?? 0
+  const totalPages = listing.data?.totalPages ?? 1
+  const state: PropertyGridState = listing.isPending
+    ? 'loading'
+    : listing.isError && !listing.data
+      ? 'error'
+      : items.length === 0
+        ? 'empty'
+        : 'ready'
+  const errorKey = listing.isError ? getErrorKey(listing.error) : null
 
-  const load = useCallback((active: Partial<SearchFilters>) => {
-    const id = ++requestId.current
-    const cacheKey = `home:${sortRef.current}:${JSON.stringify(active)}`
-    const cached = cacheGet<{ items: PropertyCardData[]; total: number }>(cacheKey)
-    activeFilters.current = active
-    setPageNo(1)
-    if (cached) {
-      setProperties(cached.items)
-      setTotal(cached.total)
-      setGridState(cached.items.length === 0 ? 'empty' : 'ready')
-    } else setGridState('loading')
-    setErrorMessage(null)
-    fetchProperties(active, 1, PAGE_SIZE, sortRef.current)
-      .then((page) => {
-        if (id !== requestId.current) return
-        cacheSet(cacheKey, { items: page.items, total: page.total })
-        setProperties(page.items)
-        setTotal(page.total)
-        setGridState(page.items.length === 0 ? 'empty' : 'ready')
-      })
-      .catch((err) => {
-        if (id !== requestId.current || cached) return
-        setErrorMessage(getErrorKey(err))
-        setGridState('error')
-      })
-  }, [])
+  useEffect(() => setDraft(applied), [applied])
+
+  // Typing a city searches by itself after a short pause; other filters wait for "Show results".
+  useEffect(() => {
+    if (draft.city.trim() === applied.city.trim()) return
+    const timer = window.setTimeout(() => {
+      setParams(writeFilters({ ...applied, city: draft.city }, 1), { replace: true })
+    }, CITY_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [draft.city, applied, setParams])
 
   useEffect(() => {
-    const params = new URLSearchParams(queryKey)
-    const active = readFilters(params)
-    setFilters(active)
-    load(params.size ? active : {})
-    return () => { requestId.current += 1 }
-  }, [queryKey, load])
+    if (!drawerOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    drawerRef.current?.querySelector<HTMLElement>('input, button')?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDrawerOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      document.removeEventListener('keydown', onKey)
+      openButton.current?.focus()
+    }
+  }, [drawerOpen])
 
-  const changeSort = (value: SortValue) => {
-    sortRef.current = value
-    setSort(value)
-    load(activeFilters.current)
-  }
+  const patchDraft = useCallback((patch: Partial<SearchFilters>) => {
+    setDraft((current) => ({ ...current, ...patch }))
+    setPriceError(false)
+  }, [])
 
-  const loadMore = () => {
-    const next = pageNo + 1
-    setLoadingMore(true)
-    fetchProperties(activeFilters.current, next, PAGE_SIZE, sortRef.current)
-      .then((page) => {
-        setProperties((current) => {
-          const seen = new Set(current.map((item) => item.id))
-          return [...current, ...page.items.filter((item) => !seen.has(item.id))]
-        })
-        setTotal(page.total)
-        setPageNo(next)
-      })
-      .catch((err) => setErrorMessage(getErrorKey(err)))
-      .finally(() => setLoadingMore(false))
-  }
-
-  const selectedCategory = categories.categories.find(
-    (category) => category.slug === filters.categorySlug,
-  )
-
-  const summaryItems = [
-    t(filters.listingType === 'SALE' ? 'listingType.sale' : 'listingType.rent'),
-    filters.region ? t(`regions.${filters.region}`) : '',
-    selectedCategory ? categoryLabel(selectedCategory, t) : '',
-    filters.rooms
-      ? t('property.rooms', { count: Number(filters.rooms) })
-      : '',
-  ].filter((item) => item.length > 0)
-
-  const handleFilterChange = (patch: Partial<SearchFilters>) => {
-    setFilters((current) => {
-      const next = { ...current, ...patch }
-      if (patch.region !== undefined) {
-        next.district = ''
-      }
-      return next
-    })
-    if (priceError) setPriceError(false)
-  }
-
-  const handleSubmit = () => {
-    const minimum = parsePrice(filters.minPrice)
-    const maximum = parsePrice(filters.maxPrice)
-    if (minimum !== null && maximum !== null && minimum > maximum) {
+  const apply = () => {
+    if (hasInvalidPriceRange(draft)) {
       setPriceError(true)
       return
     }
-    setPriceError(false)
-    setSearchParams(writeFilters(filters), { replace: true })
-    if (new URLSearchParams(writeFilters(filters)).toString() === queryKey) load(filters)
-    scrollToElement('elonlar')
+    setParams(writeFilters(draft, 1))
+    setDrawerOpen(false)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleReset = () => {
-    setFilters(EMPTY_FILTERS)
-    setSearchParams({}, { replace: true })
+  const reset = () => {
+    setDraft(EMPTY_FILTERS)
     setPriceError(false)
-    if (!queryKey) load({})
+    setParams({})
   }
+
+  const changeSort = (sort: SortValue) => setParams(writeFilters({ ...applied, sort }, 1))
+  const changePage = (next: number) => {
+    setParams(writeFilters(applied, next))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const sidebar = (idPrefix: string) => (
+    <FilterSidebar
+      idPrefix={idPrefix}
+      filters={draft}
+      categories={categories.categories}
+      priceError={priceError}
+      onChange={patchDraft}
+      onApply={apply}
+      onReset={reset}
+    />
+  )
+
+  const activeCount = countActiveFilters(applied)
+  const heading =
+    state === 'loading' && items.length === 0
+      ? t('common.loading')
+      : state === 'error'
+        ? t('home.listings.errorTitle')
+        : total === 0
+          ? t('listing.foundNone')
+          : t('listing.found', { count: total })
 
   return (
-    <div>
-      <div className="border-b border-line bg-gradient-to-b from-accent-soft via-accent-soft/50 to-canvas">
-      <section className="mx-auto w-full max-w-[88rem] px-4 pb-8 pt-8 sm:px-6 sm:pb-10 sm:pt-12 lg:px-8 lg:pb-12 lg:pt-16">
-        <p className="flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted">
-          <span className="h-px w-6 bg-accent" aria-hidden="true" />
-          {t('home.eyebrow')}
-        </p>
-        <h1 className="mt-3 max-w-4xl font-display text-3xl leading-[1.1] tracking-[-0.025em] text-ink sm:text-4xl lg:text-5xl xl:text-6xl">
-          {t('home.title')}
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted sm:text-base sm:leading-7 lg:text-lg">
-          {t('home.subtitle')}
-        </p>
-        <div className="mt-6 max-w-5xl lg:mt-8">
-          <SearchPanel
-            filters={filters}
-            categories={categories.categories}
-            categoryStatus={categories.status}
-            priceError={priceError}
-            onChange={handleFilterChange}
-            onSubmit={handleSubmit}
-            onReset={handleReset}
-          />
-        </div>
-      </section>
+    <div className="mx-auto w-full max-w-[1440px] px-3 pb-16 pt-6 sm:px-6">
+      <div className="rounded-3xl bg-surface px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
+        <div className="grid gap-10 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)] xl:gap-14">
+          <aside aria-label={t('listing.filters')} className="hidden lg:block">
+            {sidebar('filters')}
+          </aside>
 
-      </div>
-      <div className="mx-auto w-full max-w-[88rem] px-4 sm:px-6 lg:px-8">
-      <CategorySection
-        categories={categories.categories}
-        status={categories.status}
-        activeSlug={filters.categorySlug}
-        onSelect={(slug) => {
-          const next = { ...filters, categorySlug: filters.categorySlug === slug ? '' : slug }
-          setFilters(next)
-          setSearchParams(writeFilters(next), { replace: true })
-          scrollToElement('elonlar')
-        }}
-        onRetry={categories.retry}
-      />
-      <section
-        id="elonlar"
-        className="mt-10 scroll-mt-20 border-t border-line pb-12 pt-8"
-      >
-        <div>
-          <h2 className="font-display text-2xl tracking-[-0.02em] text-ink">
-            {t('home.listings.title')}
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            {t('home.listings.subtitle')}
-          </p>
-        </div>
-        <div className="mt-3 flex items-center gap-2">
-          <label htmlFor="sort" className="text-sm text-muted">
-            {t('home.listings.sort')}
-          </label>
-          <select
-            id="sort"
-            value={sort}
-            onChange={(e) => changeSort(e.target.value as SortValue)}
-            className="h-10 rounded-lg border border-line bg-surface px-3 text-sm text-ink"
-          >
-            {SORT_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {t(`home.listings.sortOptions.${value}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {submitted ? (
-          <div
-            role="status"
-            className="mt-4 flex items-start gap-2.5 rounded-md border border-line bg-surface px-3.5 py-3"
-          >
-            <div className="min-w-0">
-              <p className="text-xs leading-5 text-ink">
-                {t('home.listings.searchNotice')}
-              </p>
-              <p className="mt-1 text-[11px] leading-5 text-muted">
-                <span className="font-semibold text-ink">
-                  {t('home.listings.criteria')}:
-                </span>{' '}
-                {summaryItems.join(' · ')}
-              </p>
+          <section aria-labelledby="results-heading" className="min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h1
+                id="results-heading"
+                aria-live="polite"
+                className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl"
+              >
+                {heading}
+              </h1>
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <button
+                  ref={openButton}
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full border border-line px-5 text-sm font-semibold text-ink hover:border-ink/40 sm:flex-none lg:hidden"
+                >
+                  <SlidersHorizontal size={16} aria-hidden="true" />
+                  {t('listing.openFilters')}
+                  {activeCount > 0 && (
+                    <span className="grid size-5 place-items-center rounded-full bg-accent text-xs font-bold text-on-accent">
+                      {activeCount}
+                    </span>
+                  )}
+                </button>
+                <label htmlFor="sort" className="sr-only sm:not-sr-only sm:text-sm sm:text-muted">
+                  {t('listing.sort')}
+                </label>
+                <select
+                  id="sort"
+                  value={applied.sort}
+                  onChange={(event) => changeSort(event.target.value as SortValue)}
+                  className="h-11 flex-1 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink hover:border-ink/40 sm:flex-none"
+                >
+                  {SORT_OPTIONS.map((value) => (
+                    <option key={value} value={value}>
+                      {t(`home.listings.sortOptions.${value}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={handleReset}
-              className="ml-auto shrink-0 text-[11px] font-medium text-muted underline-offset-4 transition-colors hover:text-ink hover:underline"
-            >
-              {t('common.clear')}
-            </button>
-          </div>
-        ) : null}
 
-        {errorMessage ? (
-          <p className="mt-4 text-sm text-danger">{t(errorMessage)}</p>
-        ) : null}
+            {errorKey && state === 'error' ? (
+              <p role="alert" className="mt-4 text-sm text-danger">
+                {t(errorKey)}
+              </p>
+            ) : null}
 
-        <div className="mt-4">
-          <PropertyGrid properties={properties} state={gridState} />
+            <div className={`mt-6 transition-opacity ${listing.isPlaceholderData ? 'opacity-60' : ''}`}>
+              <PropertyGrid
+                properties={items}
+                state={state}
+                onRetry={() => void listing.refetch()}
+                favoriteIds={favorites.ids}
+                onFavoriteToggle={(property) => void favorites.toggle(property)}
+              />
+            </div>
+
+            {state === 'ready' && (
+              <Pagination page={page} totalPages={totalPages} onChange={changePage} />
+            )}
+
+            {recent.length > 0 && (
+              <section aria-labelledby="recent-heading" className="mt-14">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 id="recent-heading" className="text-xl font-extrabold tracking-tight text-ink">
+                    {t('listing.recent')}
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={clearRecentlyViewed}
+                    className="min-h-11 rounded-full px-3 text-sm font-semibold text-muted underline-offset-4 hover:text-ink hover:underline"
+                  >
+                    {t('listing.recentClear')}
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                  {recent.slice(0, 3).map((property) => (
+                    <PropertyCard
+                      key={property.id}
+                      property={property}
+                      isFavorite={favorites.ids.has(property.id)}
+                      onFavoriteToggle={(p) => void favorites.toggle(p)}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </section>
         </div>
+      </div>
 
-        {gridState === 'ready' && total > 0 && (
-          <div className="mt-8 flex flex-col items-center gap-3">
-            <p className="text-xs text-muted">
-              {t('home.listings.shown', { shown: properties.length, total })}
-            </p>
-            {properties.length < total && (
+      {drawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={t('listing.filters')}>
+          <button
+            type="button"
+            aria-label={t('listing.closeFilters')}
+            onClick={() => setDrawerOpen(false)}
+            className="absolute inset-0 bg-black/50"
+          />
+          <div
+            ref={drawerRef}
+            className="absolute inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-3xl bg-surface px-5 pb-8 pt-3 shadow-2xl"
+          >
+            <div className="mb-2 flex justify-end">
               <button
                 type="button"
-                onClick={loadMore}
-                disabled={loadingMore}
-                className="inline-flex min-h-11 items-center rounded-lg border border-accent px-6 text-sm font-semibold text-accent transition-colors hover:bg-accent hover:text-on-accent disabled:opacity-60"
+                aria-label={t('listing.closeFilters')}
+                onClick={() => setDrawerOpen(false)}
+                className="flex size-11 items-center justify-center rounded-full hover:bg-soft"
               >
-                {t(loadingMore ? 'common.loading' : 'home.listings.loadMore')}
+                <X size={20} aria-hidden="true" />
               </button>
-            )}
+            </div>
+            {sidebar('drawer')}
           </div>
-        )}
-      </section>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,725 +1,771 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Check, ImagePlus, Info, Loader2, RotateCcw, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate, useParams } from 'react-router-dom'
-import { ImagePlus, Link2, MapPin, Phone, Send, X } from 'lucide-react'
-import { useCategories } from '@/hooks/useCategories'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+
+import { getErrorKey } from '@/api/errors'
 import {
   createProperty,
-  fetchProperty,
+  deletePropertyImage,
+  fetchMyProperties,
   updateProperty,
-  uploadPropertyImages,
-  addPropertyImageUrls,
+  uploadPropertyImage,
 } from '@/api/properties'
-import { updateCurrentUser } from '@/api/auth'
-import { getErrorKey } from '@/api/errors'
-import { useAuth } from '@/hooks/useAuth'
-import { REGION_CITY_NAMES } from '@/utils/location'
-import { categoryLabel } from '@/utils/localize'
-import { YandexMap } from '@/components/YandexMap'
+import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Feedback } from '@/components/Feedback'
+import { useToast } from '@/context/ToastContext'
+import { useAuth } from '@/hooks/useAuth'
+import { useCategories } from '@/hooks/useCategories'
+import type { ListingType, Property, PropertyImage } from '@/types/property'
+import { categoryLabel } from '@/utils/localize'
+import { REGION_CITY_NAMES } from '@/utils/location'
 
-function parseCoords(value: string): [number, number] | null {
-  const m = value.match(/(-?\d+(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d+(?:[.,]\d+)?)/)
-  if (!m) return null
-  const lat = Number(m[1].replace(',', '.'))
-  const lng = Number(m[2].replace(',', '.'))
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
-  return [lat, lng]
-}
-function Section({
-  n,
-  title,
-  children,
-}: {
-  n: number
-  title: string
-  children: ReactNode
-}) {
-  return (
-    <section className="rounded-xl border border-line bg-surface p-4 sm:p-5">
-      <h2 className="mb-4 flex items-center gap-2.5 text-base font-semibold text-ink">
-        <span className="inline-flex size-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-on-accent">
-          {n}
-        </span>
-        {title}
-      </h2>
-      <div className="space-y-4">{children}</div>
-    </section>
-  )
-}
-const MAX_IMAGES = 3
-const MIN_WORDS = 10
-const MAX_WORDS = 200
-// Counts letters and digits only; spaces, line breaks and punctuation are ignored.
-const countWords = (value: string) =>
-  (value.match(/[\p{L}\p{N}]/gu) ?? []).length
+const MAX_BYTES = 5 * 1024 * 1024
+const ALLOWED = ['image/jpeg', 'image/png', 'image/webp']
 const INPUT =
-  'min-h-12 w-full min-w-0 rounded-lg border border-line bg-canvas px-3 py-2 text-base text-ink focus:border-accent'
+  'h-12 w-full min-w-0 rounded-2xl border bg-surface px-4 text-base text-ink placeholder:text-muted hover:border-ink/30 focus:border-ink'
+
+interface FormValues {
+  title: string
+  description: string
+  listingType: ListingType
+  categoryId: string
+  price: string
+  currency: 'USD' | 'UZS'
+  city: string
+  address: string
+  area: string
+  rooms: string
+  bathrooms: string
+}
+
+const EMPTY: FormValues = {
+  title: '',
+  description: '',
+  listingType: 'SALE',
+  categoryId: '',
+  price: '',
+  currency: 'USD',
+  city: '',
+  address: '',
+  area: '',
+  rooms: '',
+  bathrooms: '',
+}
+
+type UploadState = 'queued' | 'uploading' | 'done' | 'failed'
+interface Pending {
+  key: string
+  file: File
+  preview: string
+  state: UploadState
+}
+
+const toNumber = (value: string) => Number(value.replace(',', '.'))
+const isInt = (value: string) => /^\d+$/.test(value.trim())
+
+function validateStep(step: number, v: FormValues): Record<string, string> {
+  const e: Record<string, string> = {}
+  if (step === 1) {
+    const title = v.title.trim()
+    if (title.length < 5 || title.length > 150) e.title = 'wizard.titleError'
+    if (v.description.trim().length < 20) e.description = 'wizard.descriptionError'
+    if (!v.categoryId) e.categoryId = 'wizard.categoryError'
+  }
+  if (step === 2) {
+    if (!(toNumber(v.price) > 0)) e.price = 'wizard.priceError'
+    if (!v.city.trim()) e.city = 'wizard.requiredError'
+    if (!v.address.trim()) e.address = 'wizard.requiredError'
+    if (!(toNumber(v.area) > 0)) e.area = 'wizard.areaError'
+    if (!isInt(v.rooms) || Number(v.rooms) < 1) e.rooms = 'wizard.roomsError'
+    if (!isInt(v.bathrooms)) e.bathrooms = 'wizard.bathroomsError'
+  }
+  return e
+}
+
+function toPayload(v: FormValues) {
+  return {
+    title: v.title.trim(),
+    description: v.description.trim(),
+    price: toNumber(v.price),
+    currency: v.currency,
+    listingType: v.listingType,
+    categoryId: Number(v.categoryId),
+    address: v.address.trim(),
+    city: v.city.trim(),
+    area: toNumber(v.area),
+    rooms: Number(v.rooms),
+    bathrooms: Number(v.bathrooms),
+  }
+}
+
+function fromProperty(p: Property): FormValues {
+  return {
+    title: p.title,
+    description: p.description,
+    listingType: p.listingType,
+    categoryId: String(p.category?.id ?? ''),
+    price: String(p.price),
+    currency: p.currency === 'UZS' ? 'UZS' : 'USD',
+    city: p.city,
+    address: p.address,
+    area: String(p.area),
+    rooms: String(p.rooms),
+    bathrooms: String(p.bathrooms),
+  }
+}
+
 function Field({
   id,
   label,
+  error,
+  hint,
   children,
 }: {
   id: string
   label: string
-  children: ReactNode
+  error?: string
+  hint?: string
+  children: React.ReactNode
 }) {
+  const { t } = useTranslation()
   return (
-    <div className="min-w-0">
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-muted">
+    <div>
+      <label htmlFor={id} className="mb-2 block text-sm font-semibold text-ink">
         {label}
       </label>
       {children}
+      {error ? (
+        <p id={`${id}-error`} role="alert" className="mt-1.5 text-xs text-danger">
+          {t(error)}
+        </p>
+      ) : hint ? (
+        <p id={`${id}-hint`} className="mt-1.5 text-xs text-muted">
+          {hint}
+        </p>
+      ) : null}
     </div>
   )
 }
+
 export function PropertyFormPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const auth = useAuth()
-  const categoriesHook = useCategories()
+  const toast = useToast()
+  const queryClient = useQueryClient()
   const { id } = useParams()
   const editId = id ? Number(id) : null
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [price, setPrice] = useState('')
-  const [currency, setCurrency] = useState('USD')
-  const [listingType, setListingType] = useState<'SALE' | 'RENT'>('SALE')
-  const [region, setRegion] = useState('')
-  const [district, setDistrict] = useState('')
-  const [address, setAddress] = useState('')
-  const [area, setArea] = useState('')
-  const [rooms, setRooms] = useState('1')
-  const [bathrooms, setBathrooms] = useState('1')
-  const [categoryId, setCategoryId] = useState('')
-  const [latitude, setLatitude] = useState<number | null>(null)
-  const [longitude, setLongitude] = useState<number | null>(null)
-  const [coordText, setCoordText] = useState('')
-  const [coordError, setCoordError] = useState(false)
-  const [phone, setPhone] = useState('')
-  const [telegram, setTelegram] = useState('')
-  const [files, setFiles] = useState<File[]>([])
-  const [links, setLinks] = useState<string[]>([])
-  const [linkDraft, setLinkDraft] = useState('')
-  const [linkError, setLinkError] = useState(false)
-  const addLink = () => {
-    const value = linkDraft.trim()
-    let valid = false
-    try {
-      valid = /^https?:$/.test(new URL(value).protocol)
-    } catch {
-      valid = false
-    }
-    if (!valid || files.length + links.length >= MAX_IMAGES) {
-      setLinkError(true)
-      return
-    }
-    setLinks([...links, value])
-    setLinkDraft('')
-    setLinkError(false)
-  }
-  const previews = useMemo(
-    () => files.map((f) => URL.createObjectURL(f)),
-    [files],
-  )
-  useEffect(() => () => previews.forEach((u) => URL.revokeObjectURL(u)), [previews])
-  const setCoords = (lat: number | null, lng: number | null) => {
-    setLatitude(lat)
-    setLongitude(lng)
-    setCoordText(lat != null && lng != null ? `${lat.toFixed(6)}, ${lng.toFixed(6)}` : '')
-    setCoordError(false)
-  }
-  const onCoordInput = (value: string) => {
-    setCoordText(value)
-    if (!value.trim()) {
-      setLatitude(null)
-      setLongitude(null)
-      setCoordError(false)
-      return
-    }
-    const parsed = parseCoords(value)
-    if (parsed) {
-      setLatitude(parsed[0])
-      setLongitude(parsed[1])
-      setCoordError(false)
-    } else setCoordError(true)
-  }
+  const editing = editId !== null
+  const categories = useCategories()
+  const { user } = useAuth()
+
+  const [step, setStep] = useState(1)
+  const [values, setValues] = useState<FormValues>(EMPTY)
+  const [original, setOriginal] = useState<FormValues | null>(null)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(editing)
+  const [existing, setExisting] = useState<PropertyImage[]>([])
+  const [pending, setPending] = useState<Pending[]>([])
+  const [fileErrors, setFileErrors] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [loading, setLoading] = useState(Boolean(editId))
-  const [error, setError] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [createdId, setCreatedId] = useState<number | null>(null)
+  const [imageToDelete, setImageToDelete] = useState<PropertyImage | null>(null)
+  const [deletingImage, setDeletingImage] = useState(false)
+  const pendingRef = useRef<Pending[]>([])
+  pendingRef.current = pending
+
   useEffect(() => {
-    if (!auth.user) return
-    setPhone((v) => v || (auth.user?.phone ?? '').replace(/^\+998/, ''))
-    setTelegram((v) => v || (auth.user?.telegram ?? '').replace(/^@/, ''))
-  }, [auth.user])
-  useEffect(() => {
-    if (!editId) return
+    if (!editing) return
+    if (!Number.isInteger(editId) || (editId as number) < 1) {
+      setLoadError('errors.notFound')
+      setLoading(false)
+      return
+    }
     let cancelled = false
-    fetchProperty(editId, auth.token)
-      .then((p) => {
+    // GET /properties/:id hides PENDING/REJECTED items, so the owner's list is the source.
+    fetchMyProperties()
+      .then((page) => {
         if (cancelled) return
-        setTitle(p.title)
-        setDescription(p.description)
-        setPrice(String(p.price))
-        setCurrency(p.currency)
-        setListingType(p.listingType)
-        setRegion(
-          Object.keys(REGION_CITY_NAMES).find(
-            (k) =>
-              REGION_CITY_NAMES[k as keyof typeof REGION_CITY_NAMES] === p.city,
-          ) ?? '',
-        )
-        setDistrict(p.district ?? '')
-        setAddress(p.address)
-        setArea(String(p.area))
-        setRooms(String(p.rooms))
-        setBathrooms(String(p.bathrooms))
-        setCategoryId(p.category?.id ? String(p.category.id) : '')
-        setLatitude(p.latitude ?? null)
-        setLongitude(p.longitude ?? null)
-        if (p.latitude != null && p.longitude != null)
-          setCoordText(`${p.latitude}, ${p.longitude}`)
+        const found = page.items.find((item) => item.id === editId)
+        if (!found) {
+          setLoadError('errors.notFound')
+          return
+        }
+        const initial = fromProperty(found)
+        setValues(initial)
+        setOriginal(initial)
+        setExisting([...(found.images ?? [])].sort((a, b) => a.sortOrder - b.sortOrder))
       })
-      .catch((err) => {
-        if (!cancelled) setError(getErrorKey(err))
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      .catch((err) => !cancelled && setLoadError(getErrorKey(err)))
+      .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [editId, auth.token])
-  const fail = (key: string, fieldId?: string) => {
-    setError(key)
-    if (fieldId) {
-      const el = document.getElementById(fieldId)
-      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      el?.focus({ preventScroll: true })
-    }
+  }, [editing, editId])
+
+  useEffect(
+    () => () => pendingRef.current.forEach((item) => URL.revokeObjectURL(item.preview)),
+    [],
+  )
+
+  const set = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
+    setValues((current) => ({ ...current, [key]: value }))
+    setErrors((current) => {
+      if (!current[key]) return current
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
   }
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
-    setError(null)
-    if (title.trim().length < 3 || title.length > 200) {
-      fail('validation.title', 'title')
-      return
-    }
-    const words = countWords(description)
-    if (words < MIN_WORDS || words > MAX_WORDS) {
-      fail('validation.description', 'description')
-      return
-    }
-    const phoneDigits = phone.replace(/\D/g, '')
-    const tgHandle = telegram.trim().replace(/^@/, '')
-    if (!editId || phoneDigits || tgHandle) {
-      if (phoneDigits.length !== 9 || !tgHandle) {
-        fail('validation.contact', 'contact-phone')
-        return
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return
+    const problems: string[] = []
+    const accepted: Pending[] = []
+    Array.from(list).forEach((file) => {
+      if (!ALLOWED.includes(file.type)) {
+        problems.push(t('wizard.typeError', { name: file.name }))
+      } else if (file.size > MAX_BYTES) {
+        problems.push(t('wizard.sizeError', { name: file.name }))
+      } else {
+        accepted.push({
+          key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
+          file,
+          preview: URL.createObjectURL(file),
+          state: 'queued',
+        })
       }
-      if (!/^[a-zA-Z0-9_]{5,32}$/.test(tgHandle)) {
-        fail('validation.telegram', 'contact-telegram')
-        return
-      }
-    }
-    if (coordError) {
-      setError('form.coordsInvalid')
-      return
-    }
-    if (!categoryId) {
-      fail('validation.chooseCategory', 'category')
-      return
-    }
-    if (!region) {
-      fail('validation.chooseRegion', 'region')
-      return
-    }
-    const positive = (value: string) =>
-      value.trim() !== '' &&
-      Number.isFinite(Number(value)) &&
-      Number(value) >= 1 &&
-      Number(Number(value).toFixed(2)) === Number(value)
-    if (!positive(price) || !positive(area)) {
-      fail('validation.positive', 'price')
-      return
-    }
-    if (
-      !rooms.trim() ||
-      !bathrooms.trim() ||
-      !Number.isInteger(Number(rooms)) ||
-      Number(rooms) < 1 ||
-      Number(rooms) > 100 ||
-      !Number.isInteger(Number(bathrooms)) ||
-      Number(bathrooms) < 0 ||
-      Number(bathrooms) > 50
-    ) {
-      fail('validation.rooms', 'rooms')
-      return
-    }
-    if (
-      (latitude !== null &&
-        (!Number.isFinite(latitude) || Math.abs(latitude) > 90)) ||
-      (longitude !== null &&
-        (!Number.isFinite(longitude) || Math.abs(longitude) > 180))
-    ) {
-      setError('validation.coordinates')
-      return
-    }
-    if (
-      files.length + links.length > MAX_IMAGES ||
-      files.some(
-        (file) =>
-          file.size > 5 * 1024 * 1024 ||
-          !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(
-            file.type,
-          ),
+    })
+    setFileErrors(problems)
+    if (accepted.length) setPending((current) => [...current, ...accepted])
+  }
+
+  const removePending = (key: string) => {
+    setPending((current) => {
+      const target = current.find((item) => item.key === key)
+      if (target) URL.revokeObjectURL(target.preview)
+      return current.filter((item) => item.key !== key)
+    })
+  }
+
+  const refreshListings = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['my-properties'] })
+    void queryClient.invalidateQueries({ queryKey: ['properties'] })
+    void queryClient.invalidateQueries({ queryKey: ['property'] })
+  }, [queryClient])
+
+  const goNext = () => {
+    const found = validateStep(step, values)
+    setErrors(found)
+    if (Object.keys(found).length === 0) setStep((current) => current + 1)
+  }
+
+  /** Uploads queued/failed files one by one: one request per image, field `image`. */
+  const uploadAll = useCallback(async (propertyId: number): Promise<boolean> => {
+    let ok = true
+    const mark = (key: string, state: UploadState) =>
+      setPending((current) =>
+        current.map((item) => (item.key === key ? { ...item, state } : item)),
       )
-    ) {
-      setError('errors.upload')
-      return
+    for (const item of pendingRef.current) {
+      if (item.state === 'done') continue
+      mark(item.key, 'uploading')
+      try {
+        await uploadPropertyImage(propertyId, item.file)
+        mark(item.key, 'done')
+      } catch {
+        ok = false
+        mark(item.key, 'failed')
+      }
+    }
+    return ok
+  }, [])
+
+  const submit = async () => {
+    for (const s of [1, 2]) {
+      const found = validateStep(s, values)
+      if (Object.keys(found).length) {
+        setErrors(found)
+        setStep(s)
+        return
+      }
     }
     setSubmitting(true)
+    setFormError(null)
     try {
-      const city = REGION_CITY_NAMES[region as keyof typeof REGION_CITY_NAMES]
-      const payload = {
-        title,
-        description,
-        price: Number(price),
-        currency,
-        listingType,
-        address: address || district || city,
-        city,
-        district: district || undefined,
-        area: Number(area),
-        rooms: Number(rooms),
-        bathrooms: Number(bathrooms),
-        categoryId: Number(categoryId),
-        latitude: latitude ?? undefined,
-        longitude: longitude ?? undefined,
+      let propertyId = createdId ?? editId
+      if (propertyId === null) {
+        const created = await createProperty(toPayload(values))
+        propertyId = created.id
+        setCreatedId(created.id)
+      } else if (editing && original) {
+        const next = toPayload(values)
+        const base = toPayload(original)
+        const changed = Object.fromEntries(
+          Object.entries(next).filter(
+            ([key, value]) => value !== base[key as keyof typeof base],
+          ),
+        )
+        if (Object.keys(changed).length) await updateProperty(propertyId, changed)
+        else if (pending.length === 0) {
+          toast.success('wizard.noChanges')
+          navigate('/dashboard')
+          return
+        }
       }
-      if (phoneDigits || tgHandle) {
-        await updateCurrentUser({
-          phone: `+998${phoneDigits}`,
-          telegram: `@${tgHandle}`,
-        })
-        await auth.refresh()
+      const allUploaded = await uploadAll(propertyId)
+      refreshListings()
+      if (!allUploaded) {
+        setFormError('wizard.partial')
+        return
       }
-      const result = editId
-        ? await updateProperty(editId, payload)
-        : await createProperty(payload)
-      if (files.length) await uploadPropertyImages(result.id, files)
-      if (links.length) await addPropertyImageUrls(result.id, links)
-      navigate(`/elonlar/${result.id}`)
-    } catch (err) {
-      setError(getErrorKey(err))
+      refreshListings()
+      toast.success(editing ? 'wizard.updated' : 'wizard.created')
+      navigate('/dashboard')
+    } catch (error) {
+      setFormError(getErrorKey(error))
     } finally {
       setSubmitting(false)
     }
   }
-  const segment = (value: 'SALE' | 'RENT') =>
-    `flex min-h-12 flex-1 items-center justify-center rounded-lg border text-sm font-semibold transition-colors ${
-      listingType === value
-        ? 'border-accent bg-accent text-on-accent'
-        : 'border-line bg-canvas text-ink hover:border-accent'
-    }`
-  return (
-    <section className="mx-auto w-full max-w-2xl px-4 py-6 sm:py-10">
-      <h1 className="font-display text-2xl text-ink sm:text-3xl">
-        {t(editId ? 'form.edit' : 'form.create')}
-      </h1>
-      <p className="mt-1 text-sm text-muted">{t('form.steps')}</p>
-      {loading && (
-        <p role="status" className="mt-4 text-sm text-muted">
-          {t('common.loading')}
-        </p>
-      )}
-      <form
-        noValidate
-        onSubmit={handleSubmit}
-        className="mt-6 space-y-5"
-        aria-busy={submitting || loading}
-      >
-        <Section n={1} title={t('form.sBasic')}>
-          <div role="radiogroup" aria-label={t('form.listingType')} className="flex gap-2">
-            {(['SALE', 'RENT'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={listingType === value}
-                onClick={() => setListingType(value)}
-                className={segment(value)}
-              >
-                {t(value === 'SALE' ? 'listingType.sale' : 'listingType.rent')}
-              </button>
-            ))}
-          </div>
-          <Field id="category" label={t('form.category')}>
-            <select
-              id="category"
-              value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}
-              required
-              className={INPUT}
-            >
-              <option value="">{t('form.selectCategory')}</option>
-              {categoriesHook.categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {categoryLabel(category, t)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {categoriesHook.status === 'error' && (
-            <Feedback messageKey="home.categories.errorTitle" />
-          )}
-          <Field id="title" label={t('form.title')}>
-            <input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              maxLength={200}
-              className={INPUT}
-            />
-          </Field>
-          <Field id="description" label={t('form.description')}>
-            <textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              required
-              className={`${INPUT} min-h-32`}
-            />
-            <p
-              className={`mt-1.5 text-xs ${
-                countWords(description) > MAX_WORDS ||
-                (description.trim() && countWords(description) < MIN_WORDS)
-                  ? 'text-danger'
-                  : 'text-muted'
-              }`}
-            >
-              {t('form.wordCount', {
-                count: countWords(description),
-                min: MIN_WORDS,
-                max: MAX_WORDS,
-              })}
-            </p>
-          </Field>
-        </Section>
 
-        <Section n={2} title={t('form.sPrice')}>
-          <div className="grid grid-cols-[1fr_7rem] gap-3">
-            <Field id="price" label={t('form.price')}>
-              <input
-                id="price"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                required
-                min={1}
-                className={INPUT}
-              />
-            </Field>
-            <Field id="currency" label={t('form.currency')}>
-              <select
-                id="currency"
-                value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                className={INPUT}
-              >
-                {['USD', 'UZS', 'EUR'].map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </Section>
+  const confirmDeleteImage = async (image: PropertyImage) => {
+    if (editId === null) return
+    setDeletingImage(true)
+    try {
+      await deletePropertyImage(editId, image.id)
+      setExisting((current) => current.filter((item) => item.id !== image.id))
+      refreshListings()
+      toast.success('wizard.imageDeleted')
+    } catch (error) {
+      toast.error(getErrorKey(error))
+    } finally {
+      setDeletingImage(false)
+      setImageToDelete(null)
+    }
+  }
 
-        <Section n={3} title={t('form.sDetails')}>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { id: 'rooms', value: rooms, set: setRooms, min: 1, step: '1' },
-              { id: 'area', value: area, set: setArea, min: 1, step: '0.01' },
-              { id: 'bathrooms', value: bathrooms, set: setBathrooms, min: 0, step: '1' },
-            ].map((field) => (
-              <Field key={field.id} id={field.id} label={t(`form.${field.id}`)}>
-                <input
-                  id={field.id}
-                  type="number"
-                  inputMode="decimal"
-                  step={field.step}
-                  value={field.value}
-                  onChange={(e) => field.set(e.target.value)}
-                  required
-                  min={field.min}
-                  className={INPUT}
-                />
-              </Field>
-            ))}
-          </div>
-        </Section>
+  const steps = [t('wizard.step1'), t('wizard.step2'), t('wizard.step3')]
+  const categoryName = useMemo(() => {
+    const found = categories.categories.find((c) => String(c.id) === values.categoryId)
+    return found ? categoryLabel(found, t) : ''
+  }, [categories.categories, values.categoryId, t])
 
-        <Section n={4} title={t('form.sLocation')}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field id="region" label={t('form.region')}>
-              <select
-                id="region"
-                value={region}
-                onChange={(e) => setRegion(e.target.value)}
-                required
-                className={INPUT}
-              >
-                <option value="">{t('form.selectRegion')}</option>
-                {Object.keys(REGION_CITY_NAMES).map((key) => (
-                  <option key={key} value={key}>
-                    {t(`regions.${key}`)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field id="district" label={`${t('form.district')} (${t('form.optional')})`}>
-              <input
-                id="district"
-                value={district}
-                onChange={(e) => setDistrict(e.target.value)}
-                maxLength={100}
-                className={INPUT}
-              />
-            </Field>
-          </div>
-          <Field id="address" label={`${t('form.address')} (${t('form.optional')})`}>
-            <input
-              id="address"
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              maxLength={200}
-              className={INPUT}
-            />
-          </Field>
-          <Field id="coords" label={`${t('form.coords')} (${t('form.optional')})`}>
-            <div className="relative">
-              <MapPin
-                size={16}
-                aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-              />
-              <input
-                id="coords"
-                value={coordText}
-                onChange={(e) => onCoordInput(e.target.value)}
-                inputMode="decimal"
-                autoComplete="off"
-                spellCheck={false}
-                aria-invalid={coordError}
-                aria-describedby="coords-hint"
-                className={`${INPUT} pl-10 ${coordError ? 'border-danger' : ''}`}
-              />
-            </div>
-            <p
-              id="coords-hint"
-              className={`mt-1.5 text-xs ${coordError ? 'text-danger' : 'text-muted'}`}
-            >
-              {t(coordError ? 'form.coordsInvalid' : 'form.coordsHint')}
-            </p>
-          </Field>
-          <p className="text-sm text-muted">{t('form.mapHint')}</p>
-          <YandexMap
-            latitude={latitude}
-            longitude={longitude}
-            selectable
-            height={300}
-            onSelect={(lat, lng) => setCoords(lat, lng)}
-          />
-          {latitude !== null && (
-            <button
-              type="button"
-              onClick={() => setCoords(null, null)}
-              className="text-sm font-medium text-accent hover:underline"
-            >
-              {t('form.clearLocation')}
-            </button>
-          )}
-        </Section>
+  const aria = (key: string, hintKey?: string) => ({
+    'aria-invalid': Boolean(errors[key]),
+    'aria-describedby': errors[key] ? `${key}-error` : hintKey ? `${key}-hint` : undefined,
+  })
+  const border = (key: string) => (errors[key] ? 'border-danger' : 'border-line')
 
-        <Section n={5} title={t('form.sPhotos')}>
-          <input
-            id="images"
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/avif"
-            multiple
-            onChange={(e) => {
-              setFiles(
-                Array.from(e.target.files ?? []).slice(0, MAX_IMAGES - links.length),
-              )
-              e.target.value = ''
-            }}
-            className="peer sr-only"
-            aria-describedby="image-hint"
-          />
-          <label
-            htmlFor="images"
-            className="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-line bg-canvas px-3 py-4 text-center text-sm text-muted hover:border-accent peer-focus-visible:outline-2 peer-focus-visible:outline-accent"
-          >
-            <ImagePlus size={24} aria-hidden="true" className="text-accent" />
-            <span className="font-medium text-ink">{t('form.chooseImages')}</span>
-          </label>
-          <p id="image-hint" className="text-xs text-muted">
-            {t('form.fileHint')}
-          </p>
-          <div>
-            <label htmlFor="image-link" className="mb-1 block text-sm font-medium text-muted">
-              {t('form.imageLink')}
-            </label>
-            <div className="flex gap-2">
-              <input
-                id="image-link"
-                type="url"
-                inputMode="url"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={linkDraft}
-                onChange={(e) => {
-                  setLinkDraft(e.target.value)
-                  setLinkError(false)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    addLink()
-                  }
-                }}
-                disabled={files.length + links.length >= MAX_IMAGES}
-                aria-invalid={linkError}
-                className={`${INPUT} flex-1 ${linkError ? 'border-danger' : ''}`}
-              />
-              <button
-                type="button"
-                onClick={addLink}
-                disabled={files.length + links.length >= MAX_IMAGES}
-                className="inline-flex min-h-12 shrink-0 items-center gap-1.5 rounded-lg border border-accent px-4 text-sm font-semibold text-accent disabled:opacity-50"
-              >
-                <Link2 size={16} aria-hidden="true" />
-                {t('form.addLink')}
-              </button>
-            </div>
-            {linkError && (
-              <p className="mt-1.5 text-xs text-danger">{t('form.linkInvalid')}</p>
-            )}
-          </div>
-          {files.length + links.length > 0 && (
-            <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {links.map((url, index) => (
-                <li
-                  key={`${url}-${index}`}
-                  className="relative aspect-square overflow-hidden rounded-lg border border-line"
-                >
-                  <img src={url} alt="" className="size-full object-cover" />
-                  <button
-                    type="button"
-                    aria-label={t('form.removeImage')}
-                    onClick={() => setLinks(links.filter((_, i) => i !== index))}
-                    className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-black/60 text-white"
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-              {files.map((file, index) => (
-                <li
-                  key={`${file.name}-${index}`}
-                  className="relative aspect-square overflow-hidden rounded-lg border border-line"
-                >
-                  <img src={previews[index]} alt="" className="size-full object-cover" />
-                  {index === 0 && links.length === 0 && (
-                    <span className="absolute left-1 top-1 rounded bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-on-accent">
-                      {t('form.mainPhoto')}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    aria-label={t('form.removeImage')}
-                    onClick={() => setFiles(files.filter((_, i) => i !== index))}
-                    className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-full bg-black/60 text-white"
-                  >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        <Section n={6} title={t('form.sContacts')}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field id="contact-phone" label={t('form.phone')}>
-              <div className="relative">
-                <Phone
-                  size={15}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                />
-                <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm text-muted">
-                  +998
-                </span>
-                <input
-                  id="contact-phone"
-                  type="tel"
-                  inputMode="numeric"
-                  autoComplete="tel-national"
-                  value={phone}
-                  onChange={(e) =>
-                    setPhone(e.target.value.replace(/\D/g, '').slice(0, 9))
-                  }
-                  required
-                  className={`${INPUT} pl-[4.5rem]`}
-                />
-              </div>
-            </Field>
-            <Field id="contact-telegram" label={t('form.telegram')}>
-              <div className="relative">
-                <Send
-                  size={15}
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
-                />
-                <span className="pointer-events-none absolute left-9 top-1/2 -translate-y-1/2 text-sm text-muted">
-                  @
-                </span>
-                <input
-                  id="contact-telegram"
-                  value={telegram}
-                  onChange={(e) =>
-                    setTelegram(e.target.value.replace(/^@/, '').slice(0, 32))
-                  }
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  maxLength={32}
-                  required
-                  className={`${INPUT} pl-14`}
-                />
-              </div>
-            </Field>
-          </div>
-        </Section>
-
-        <Feedback messageKey={error} />
-        <div className="sticky bottom-0 -mx-4 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
-          <button
-            type="submit"
-            disabled={submitting || loading}
-            className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-accent px-4 py-3 text-base font-semibold text-on-accent disabled:opacity-70"
-          >
-            {t(submitting ? 'common.saving' : 'common.save')}
-          </button>
+  if (loading) {
+    return (
+      <div className="mx-auto w-full max-w-[1440px] px-3 pb-16 pt-6 sm:px-6">
+        <div className="h-96 rounded-3xl bg-soft motion-safe:animate-pulse" aria-busy="true" />
+      </div>
+    )
+  }
+  if (loadError) {
+    return (
+      <div className="mx-auto w-full max-w-[1440px] px-3 pb-16 pt-6 sm:px-6">
+        <div className="rounded-3xl bg-surface p-8">
+          <Feedback messageKey={loadError} />
         </div>
-      </form>
-    </section>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-[1440px] px-3 pb-16 pt-6 sm:px-6">
+      <div className="rounded-3xl bg-surface px-4 py-8 sm:px-8 sm:py-10">
+        <div className="mx-auto w-full max-w-3xl">
+          <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">
+            {t(editing ? 'form.edit' : 'form.create')}
+          </h1>
+          <p className="mt-3 flex items-start gap-2 rounded-2xl bg-soft p-4 text-sm text-muted">
+            <Info size={18} aria-hidden="true" className="mt-0.5 shrink-0" />
+            {t(editing ? 'wizard.editNotice' : 'wizard.pendingNotice')}
+          </p>
+
+          <nav aria-label={t('wizard.steps')} className="mt-6">
+            <ol className="grid grid-cols-3 gap-2">
+              {steps.map((label, index) => {
+                const number = index + 1
+                const done = number < step
+                const current = number === step
+                return (
+                  <li key={label} aria-current={current ? 'step' : undefined}>
+                    <div
+                      className={`h-1.5 rounded-full ${done || current ? 'bg-accent' : 'bg-line'}`}
+                    />
+                    <p
+                      className={`mt-2 flex items-center gap-1.5 text-xs font-semibold sm:text-sm ${
+                        current ? 'text-ink' : 'text-muted'
+                      }`}
+                    >
+                      {done && <Check size={14} aria-hidden="true" />}
+                      <span className="line-clamp-2">{label}</span>
+                    </p>
+                  </li>
+                )
+              })}
+            </ol>
+          </nav>
+          <p className="sr-only" aria-live="polite">
+            {t('wizard.stepOf', { current: step, total: 3 })}
+          </p>
+
+          <form
+            noValidate
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (step < 3) goNext()
+              else void submit()
+            }}
+            className="mt-8 space-y-5"
+          >
+            {step === 1 && (
+              <>
+                <Field id="title" label={t('form.title')} error={errors.title}>
+                  <input
+                    id="title"
+                    value={values.title}
+                    maxLength={150}
+                    onChange={(e) => set('title', e.target.value)}
+                    className={`${INPUT} ${border('title')}`}
+                    {...aria('title')}
+                  />
+                </Field>
+                <Field
+                  id="description"
+                  label={t('form.description')}
+                  error={errors.description}
+                  hint={t('wizard.descriptionHint')}
+                >
+                  <textarea
+                    id="description"
+                    value={values.description}
+                    onChange={(e) => set('description', e.target.value)}
+                    className={`min-h-36 w-full rounded-2xl border bg-surface px-4 py-3 text-base text-ink focus:border-ink ${border('description')}`}
+                    {...aria('description', 'description')}
+                  />
+                </Field>
+                <fieldset>
+                  <legend className="mb-2 text-sm font-semibold text-ink">
+                    {t('form.listingType')}
+                  </legend>
+                  <div className="flex gap-2">
+                    {(['SALE', 'RENT'] as const).map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={values.listingType === value}
+                        onClick={() => set('listingType', value)}
+                        className={`inline-flex min-h-12 flex-1 items-center justify-center rounded-2xl border px-4 text-sm font-semibold transition-colors sm:flex-none sm:px-8 ${
+                          values.listingType === value
+                            ? 'border-accent bg-accent text-on-accent'
+                            : 'border-line text-ink hover:border-ink/40'
+                        }`}
+                      >
+                        {t(value === 'SALE' ? 'listingType.sale' : 'listingType.rent')}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                {categories.status === 'empty' && (
+                  <div role="alert" className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+                    <p>{t('wizard.noCategories')}</p>
+                    {user?.role === 'ADMIN' && (
+                      <Link
+                        to="/admin?tab=categories"
+                        className="mt-2 inline-flex min-h-11 items-center font-semibold underline"
+                      >
+                        {t('wizard.noCategoriesAdmin')}
+                      </Link>
+                    )}
+                  </div>
+                )}
+                <Field id="categoryId" label={t('form.category')} error={errors.categoryId}>
+                  <select
+                    id="categoryId"
+                    value={values.categoryId}
+                    onChange={(e) => set('categoryId', e.target.value)}
+                    className={`${INPUT} ${border('categoryId')}`}
+                    {...aria('categoryId')}
+                  >
+                    <option value="">{t('form.selectCategory')}</option>
+                    {categories.categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {categoryLabel(category, t)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+                  <Field id="price" label={t('form.price')} error={errors.price}>
+                    <input
+                      id="price"
+                      inputMode="decimal"
+                      value={values.price}
+                      onChange={(e) => set('price', e.target.value.replace(/[^\d.,]/g, ''))}
+                      className={`${INPUT} ${border('price')}`}
+                      {...aria('price')}
+                    />
+                  </Field>
+                  <Field id="currency" label={t('form.currency')}>
+                    <select
+                      id="currency"
+                      value={values.currency}
+                      onChange={(e) => set('currency', e.target.value as 'USD' | 'UZS')}
+                      className={`${INPUT} border-line`}
+                    >
+                      <option value="USD">{t('wizard.currencyUSD')}</option>
+                      <option value="UZS">{t('wizard.currencyUZS')}</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field id="city" label={t('wizard.city')} error={errors.city} hint={t('wizard.cityHint')}>
+                  <input
+                    id="city"
+                    list="city-options"
+                    value={values.city}
+                    onChange={(e) => set('city', e.target.value)}
+                    autoComplete="off"
+                    className={`${INPUT} ${border('city')}`}
+                    {...aria('city', 'city')}
+                  />
+                  <datalist id="city-options">
+                    {Object.values(REGION_CITY_NAMES).map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </Field>
+                <Field id="address" label={t('form.address')} error={errors.address}>
+                  <input
+                    id="address"
+                    value={values.address}
+                    onChange={(e) => set('address', e.target.value)}
+                    autoComplete="street-address"
+                    className={`${INPUT} ${border('address')}`}
+                    {...aria('address')}
+                  />
+                </Field>
+                <div className="grid gap-5 sm:grid-cols-3">
+                  <Field id="area" label={t('form.area')} error={errors.area}>
+                    <input
+                      id="area"
+                      inputMode="decimal"
+                      value={values.area}
+                      onChange={(e) => set('area', e.target.value.replace(/[^\d.,]/g, ''))}
+                      className={`${INPUT} ${border('area')}`}
+                      {...aria('area')}
+                    />
+                  </Field>
+                  <Field id="rooms" label={t('form.rooms')} error={errors.rooms}>
+                    <input
+                      id="rooms"
+                      inputMode="numeric"
+                      value={values.rooms}
+                      onChange={(e) => set('rooms', e.target.value.replace(/\D/g, ''))}
+                      className={`${INPUT} ${border('rooms')}`}
+                      {...aria('rooms')}
+                    />
+                  </Field>
+                  <Field id="bathrooms" label={t('form.bathrooms')} error={errors.bathrooms}>
+                    <input
+                      id="bathrooms"
+                      inputMode="numeric"
+                      value={values.bathrooms}
+                      onChange={(e) => set('bathrooms', e.target.value.replace(/\D/g, ''))}
+                      className={`${INPUT} ${border('bathrooms')}`}
+                      {...aria('bathrooms')}
+                    />
+                  </Field>
+                </div>
+              </>
+            )}
+
+            {step === 3 && (
+              <>
+                {editing && existing.length > 0 && (
+                  <section aria-label={t('wizard.existingPhotos')}>
+                    <h2 className="mb-3 text-sm font-semibold text-ink">
+                      {t('wizard.existingPhotos')}
+                    </h2>
+                    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {existing.map((image) => (
+                        <li key={image.id} className="relative aspect-square overflow-hidden rounded-2xl bg-soft">
+                          <img src={image.url} alt="" loading="lazy" className="size-full object-cover" />
+                          <button
+                            type="button"
+                            aria-label={t('wizard.deleteImage')}
+                            onClick={() => setImageToDelete(image)}
+                            className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-full bg-white/95 text-danger shadow"
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                <section aria-label={t('wizard.photos')}>
+                  <h2 className="text-sm font-semibold text-ink">{t('wizard.photos')}</h2>
+                  <p className="mt-1 text-xs text-muted">{t('wizard.photosHint')}</p>
+                  <label
+                    htmlFor="images"
+                    className="mt-3 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-line px-4 text-center text-sm font-semibold text-ink hover:border-ink/40 focus-within:border-ink"
+                  >
+                    <ImagePlus size={26} aria-hidden="true" />
+                    {t('wizard.choose')}
+                    <input
+                      id="images"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      className="sr-only"
+                      onChange={(e) => {
+                        addFiles(e.target.files)
+                        e.target.value = ''
+                      }}
+                    />
+                  </label>
+                  {fileErrors.length > 0 && (
+                    <ul role="alert" className="mt-2 space-y-1 text-xs text-danger">
+                      {fileErrors.map((message) => (
+                        <li key={message}>{message}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {pending.length > 0 && (
+                    <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {pending.map((item) => (
+                        <li key={item.key} className="relative aspect-square overflow-hidden rounded-2xl bg-soft">
+                          <img src={item.preview} alt={item.file.name} className="size-full object-cover" />
+                          <span
+                            className={`absolute inset-x-2 bottom-2 flex items-center justify-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold ${
+                              item.state === 'failed'
+                                ? 'bg-red-100 text-red-800'
+                                : item.state === 'done'
+                                  ? 'bg-accent text-on-accent'
+                                  : 'bg-white/95 text-ink'
+                            }`}
+                          >
+                            {item.state === 'uploading' && (
+                              <Loader2 size={12} className="animate-spin" aria-hidden="true" />
+                            )}
+                            {item.state === 'done' && <Check size={12} aria-hidden="true" />}
+                            {t(
+                              {
+                                queued: 'wizard.waiting',
+                                uploading: 'wizard.uploading',
+                                done: 'wizard.uploaded',
+                                failed: 'wizard.failed',
+                              }[item.state],
+                            )}
+                          </span>
+                          {!submitting && item.state !== 'done' && (
+                            <button
+                              type="button"
+                              aria-label={`${t('wizard.remove')}: ${item.file.name}`}
+                              onClick={() => removePending(item.key)}
+                              className="absolute right-2 top-2 flex size-10 items-center justify-center rounded-full bg-white/95 shadow"
+                            >
+                              <X size={16} aria-hidden="true" />
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+
+                <section aria-label={t('wizard.review')} className="rounded-2xl bg-soft p-4 sm:p-5">
+                  <h2 className="text-sm font-bold text-ink">{t('wizard.review')}</h2>
+                  <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                    {[
+                      [t('form.title'), values.title],
+                      [t('form.listingType'), t(values.listingType === 'SALE' ? 'listingType.sale' : 'listingType.rent')],
+                      [t('form.category'), categoryName],
+                      [t('form.price'), `${values.price} ${values.currency}`],
+                      [t('wizard.city'), values.city],
+                      [t('form.address'), values.address],
+                      [t('form.area'), values.area],
+                      [t('form.rooms'), values.rooms],
+                      [t('form.bathrooms'), values.bathrooms],
+                      [t('wizard.photos'), t('wizard.reviewPhotos', { count: existing.length + pending.length })],
+                    ].map(([label, value]) => (
+                      <div key={label} className="min-w-0">
+                        <dt className="text-xs text-muted">{label}</dt>
+                        <dd className="break-words font-medium text-ink">{value || '—'}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              </>
+            )}
+
+            <Feedback messageKey={formError} />
+
+            <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-between">
+              {step > 1 ? (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setStep((current) => current - 1)}
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl border border-line px-8 text-sm font-semibold text-ink hover:border-ink/40 disabled:opacity-60"
+                >
+                  {t('wizard.back')}
+                </button>
+              ) : (
+                <span />
+              )}
+              {step < 3 ? (
+                <button
+                  type="submit"
+                  className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-nav px-8 text-sm font-semibold text-white hover:bg-black"
+                >
+                  {t('wizard.next')}
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-accent px-8 text-sm font-bold text-on-accent hover:brightness-95 disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                  ) : formError && pending.some((item) => item.state === 'failed') ? (
+                    <RotateCcw size={16} aria-hidden="true" />
+                  ) : null}
+                  {formError && pending.some((item) => item.state === 'failed')
+                    ? t('wizard.retryFailed')
+                    : t(editing ? 'wizard.submitEdit' : 'wizard.submitCreate')}
+                </button>
+              )}
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {imageToDelete && (
+        <ConfirmDialog
+          messageKey="wizard.deleteImageConfirm"
+          values={{}}
+          confirmKey="common.delete"
+          busy={deletingImage}
+          onConfirm={() => confirmDeleteImage(imageToDelete)}
+          onCancel={() => setImageToDelete(null)}
+        />
+      )}
+    </div>
   )
 }

@@ -5,7 +5,6 @@ export interface Inquiry {
   message: string
   phone: string
   createdAt: string
-  sender?: { id: number; fullName: string; phone?: string | null; telegram?: string | null }
   property: {
     id: number
     title: string
@@ -33,15 +32,6 @@ export async function createInquiry(
 export async function fetchSentInquiries(): Promise<Inquiry[]> {
   try {
     const { data } = await apiClient.get('/inquiries/my')
-    return Array.isArray(data) ? (data as Inquiry[]) : []
-  } catch (error) {
-    throw normalizeApiError(error)
-  }
-}
-
-export async function fetchReceivedInquiries(): Promise<Inquiry[]> {
-  try {
-    const { data } = await apiClient.get('/inquiries/received')
     return Array.isArray(data) ? (data as Inquiry[]) : []
   } catch (error) {
     throw normalizeApiError(error)

@@ -7,7 +7,7 @@ export function NotFoundPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[88rem] flex-1 flex-col justify-center px-4 py-20 sm:px-6 lg:px-8">
-      <p className="font-display text-6xl leading-none text-accent">404</p>
+      <p className="font-display text-6xl leading-none text-accent-ink">404</p>
       <h1 className="mt-5 font-display text-3xl tracking-[-0.025em] text-ink">
         {t('notFound.title')}
       </h1>
@@ -16,7 +16,7 @@ export function NotFoundPage() {
       </p>
       <Link
         to="/"
-        className="mt-8 inline-flex w-fit items-center gap-2 rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+        className="mt-8 inline-flex w-fit items-center gap-2 rounded-md border border-line bg-surface px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-accent hover:text-accent-ink"
       >
         <ArrowLeft size={15} strokeWidth={1.8} aria-hidden="true" />
         {t('notFound.back')}

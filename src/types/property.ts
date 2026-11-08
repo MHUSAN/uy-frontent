@@ -18,7 +18,7 @@ export interface PropertyOwner {
   id: number
   fullName: string
   phone?: string | null
-  telegram?: string | null
+  email?: string | null
 }
 
 export interface Property {
@@ -31,9 +31,6 @@ export interface Property {
   status?: PropertyStatus
   address: string
   city: string
-  district?: string | null
-  latitude?: number | null
-  longitude?: number | null
   area: number
   rooms: number
   bathrooms: number
@@ -57,7 +54,6 @@ export type PropertyCardData = Pick<
   | 'area'
   | 'rooms'
   | 'bathrooms'
-  | 'district'
   | 'images'
   | 'status'
   | 'createdAt'

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Outlet } from 'react-router-dom'
 
@@ -31,7 +31,16 @@ export function RootLayout() {
       <Header />
 
       <main id="main-content" className="flex flex-1 flex-col">
-        <Outlet />
+        <Suspense
+          fallback={
+            <div role="status" aria-busy="true" className="mx-auto w-full max-w-[1440px] px-3 pt-6 sm:px-6">
+              <div className="h-96 rounded-3xl bg-soft motion-safe:animate-pulse" />
+              <span className="sr-only">{t('common.loading')}</span>
+            </div>
+          }
+        >
+          <Outlet />
+        </Suspense>
       </main>
 
       <Footer />

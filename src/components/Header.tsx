@@ -5,29 +5,29 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 
 import { AccountMenu } from '@/components/AccountMenu'
 import { Brand } from '@/components/Brand'
-import { HashLink } from '@/components/HashLink'
 import { LanguageSwitcher } from '@/components/LanguageSwitcher'
-import { ThemeToggle } from '@/components/ThemeToggle'
 import { useAuth } from '@/hooks/useAuth'
 
-const DESKTOP_LINK =
-  'inline-flex h-8 items-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium text-muted transition-colors hover:bg-accent-soft hover:text-ink'
-const MOBILE_LINK =
-  'flex min-h-11 items-center rounded-md px-3 py-2.5 text-sm font-medium text-ink transition-colors hover:bg-accent-soft'
+const LINK_BASE =
+  'inline-flex items-center whitespace-nowrap rounded-full border px-5 text-sm font-medium transition-colors'
+const LINK_IDLE = 'border-transparent text-white/80 hover:text-white'
+const LINK_ACTIVE = 'border-accent text-white'
 
-function GuestActions() {
+function GuestActions({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useTranslation()
   return (
     <>
       <Link
         to="/login"
-        className="inline-flex min-h-11 items-center justify-center rounded-lg px-3 text-sm font-medium text-ink hover:bg-accent-soft"
+        onClick={onNavigate}
+        className="inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-medium text-white hover:bg-white/10"
       >
         {t('nav.login')}
       </Link>
       <Link
         to="/register"
-        className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-3 text-center text-sm font-semibold text-on-accent hover:opacity-90"
+        onClick={onNavigate}
+        className="inline-flex min-h-11 items-center justify-center rounded-full bg-accent px-5 text-center text-sm font-semibold text-on-accent hover:brightness-95"
       >
         {t('authFlow.register')}
       </Link>
@@ -45,8 +45,24 @@ export function Header() {
   const routeKey = location.pathname + location.search
   const menuOpen = mobilePath === routeKey
   const closeMenu = () => setMobilePath(null)
-  const admin = !auth.loading && auth.user?.role === 'ADMIN'
   const guest = !auth.loading && !auth.user
+
+  const onHome = location.pathname === '/'
+  const listingType = new URLSearchParams(location.search).get('type')
+  const items: Array<{ key: string; to: string; active: boolean }> = [
+    { key: 'buy', to: '/?type=SALE', active: onHome && listingType === 'SALE' },
+    { key: 'rent', to: '/?type=RENT', active: onHome && listingType === 'RENT' },
+    {
+      key: 'postListing',
+      to: '/elon-berish',
+      active: location.pathname === '/elon-berish',
+    },
+    {
+      key: 'favorites',
+      to: '/sevimlilar',
+      active: location.pathname === '/sevimlilar',
+    },
+  ]
 
   useEffect(() => {
     if (!menuOpen) return
@@ -67,112 +83,90 @@ export function Header() {
     }
   }, [menuOpen])
 
-  const navigation = (mobile: boolean) => (
-    <nav
-      aria-label={t('nav.primary')}
-      className={
-        mobile ? 'grid gap-0.5' : 'ml-2 hidden items-center gap-0.5 lg:flex'
-      }
-    >
-      <NavLink
-        to="/"
-        end
-        className={mobile ? MOBILE_LINK : DESKTOP_LINK}
-        onClick={closeMenu}
-      >
-        {t('nav.home')}
-      </NavLink>
-      {!admin && (
-        <>
-          <HashLink
-            sectionId="elonlar"
-            className={mobile ? MOBILE_LINK : DESKTOP_LINK}
-            onNavigate={closeMenu}
-          >
-            {t('nav.listings')}
-          </HashLink>
-          <HashLink
-            sectionId="kategoriyalar"
-            className={mobile ? MOBILE_LINK : DESKTOP_LINK}
-            onNavigate={closeMenu}
-          >
-            {t('nav.categories')}
-          </HashLink>
-        </>
-      )}
-    </nav>
-  )
-
   return (
-    <header
-      ref={header}
-      className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur"
-    >
-      <div className="mx-auto flex min-h-14 max-w-[88rem] items-center gap-3 px-4 sm:px-6 lg:px-8">
-        <Brand onClick={closeMenu} />
-        {navigation(false)}
-        <div className="ml-auto flex min-w-0 items-center gap-2">
-          <div className="hidden items-center gap-1.5 md:flex">
-            <LanguageSwitcher />
-            <ThemeToggle />
-          </div>
-          {auth.loading ? (
-            <div
-              role="status"
-              aria-label={t('account.restoring')}
-              className="flex h-11 w-36 shrink-0 items-center gap-2 rounded-lg border border-line px-2 sm:w-48"
-            >
-              <span
-                aria-hidden="true"
-                className="size-8 rounded-full bg-line"
-              />
-              <span aria-hidden="true" className="h-2 w-16 rounded bg-line" />
-              <span className="sr-only">{t('account.restoring')}</span>
-            </div>
-          ) : auth.user ? (
-            <AccountMenu
-              onOpen={closeMenu}
-              key={`${auth.user.id}:${auth.user.role}:${routeKey}`}
-            />
-          ) : (
-            <div className="hidden items-center gap-1 sm:flex">
-              <GuestActions />
-            </div>
-          )}
-          <button
-            ref={mobileTrigger}
-            type="button"
-            aria-expanded={menuOpen}
-            aria-controls="mobile-navigation"
-            aria-label={t(menuOpen ? 'nav.closeMenu' : 'nav.openMenu')}
-            onClick={() => setMobilePath(menuOpen ? null : routeKey)}
-            className="flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-surface text-ink hover:border-accent lg:hidden"
+    <header ref={header} className="sticky top-0 z-40 px-3 pt-3 sm:px-6">
+      <div className="mx-auto max-w-[1440px] rounded-3xl bg-nav text-white shadow-lg">
+        <div className="flex min-h-16 items-center gap-3 px-4 sm:px-8">
+          <Brand onClick={closeMenu} />
+
+          <nav
+            aria-label={t('nav.primary')}
+            className="mx-auto hidden h-11 items-center gap-1 lg:flex"
           >
-            {menuOpen ? (
-              <X size={17} aria-hidden="true" />
-            ) : (
-              <Menu size={17} aria-hidden="true" />
-            )}
-          </button>
-        </div>
-      </div>
-      {guest && (
-        <div className="mx-auto flex max-w-[88rem] items-center justify-end gap-2 border-t border-line px-4 py-2 sm:hidden">
-          <GuestActions />
-        </div>
-      )}
-      {menuOpen && (
-        <div
-          id="mobile-navigation"
-          className="max-h-[70vh] overflow-y-auto border-t border-line bg-surface px-4 py-4 sm:px-6 lg:hidden"
-        >
-          {navigation(true)}
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3 md:hidden">
+            {items.map((item) => (
+              <NavLink
+                key={item.key}
+                to={item.to}
+                aria-current={item.active ? 'page' : undefined}
+                className={`${LINK_BASE} h-11 ${item.active ? LINK_ACTIVE : LINK_IDLE}`}
+              >
+                {t(`nav.${item.key}`)}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex min-w-0 items-center gap-2 lg:ml-0">
             <LanguageSwitcher />
-            <ThemeToggle />
+            {auth.loading ? (
+              <span
+                role="status"
+                aria-label={t('account.restoring')}
+                className="size-10 shrink-0 animate-pulse rounded-full bg-white/15"
+              />
+            ) : auth.user ? (
+              <AccountMenu
+                onOpen={closeMenu}
+                key={`${auth.user.id}:${auth.user.role}:${routeKey}`}
+              />
+            ) : (
+              <div className="hidden items-center gap-1 sm:flex">
+                <GuestActions />
+              </div>
+            )}
+            <button
+              ref={mobileTrigger}
+              type="button"
+              aria-expanded={menuOpen}
+              aria-controls="mobile-navigation"
+              aria-label={t(menuOpen ? 'nav.closeMenu' : 'nav.openMenu')}
+              onClick={() => setMobilePath(menuOpen ? null : routeKey)}
+              className="flex size-11 shrink-0 items-center justify-center rounded-full text-white hover:bg-white/10 lg:hidden"
+            >
+              {menuOpen ? (
+                <X size={20} aria-hidden="true" />
+              ) : (
+                <Menu size={20} aria-hidden="true" />
+              )}
+            </button>
           </div>
         </div>
-      )}
+
+        {menuOpen && (
+          <div
+            id="mobile-navigation"
+            className="max-h-[75vh] overflow-y-auto border-t border-white/10 px-4 py-4 sm:px-8 lg:hidden"
+          >
+            <nav aria-label={t('nav.primary')} className="grid gap-1">
+              {items.map((item) => (
+                <NavLink
+                  key={item.key}
+                  to={item.to}
+                  onClick={closeMenu}
+                  aria-current={item.active ? 'page' : undefined}
+                  className={`${LINK_BASE} min-h-12 ${item.active ? LINK_ACTIVE : LINK_IDLE}`}
+                >
+                  {t(`nav.${item.key}`)}
+                </NavLink>
+              ))}
+            </nav>
+            {guest && (
+              <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3 sm:hidden">
+                <GuestActions onNavigate={closeMenu} />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </header>
   )
 }

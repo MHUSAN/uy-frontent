@@ -12,6 +12,7 @@
     "test": "node --experimental-strip-types --test scripts/i18n.test.mjs"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.62.0",
     "axios": "^1.21.0",
     "i18next": "^26.7.2",
     "lucide-react": "^1.70.0",

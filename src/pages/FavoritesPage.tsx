@@ -1,75 +1,52 @@
-import { useEffect, useState } from 'react'
+import { Heart } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
-import { fetchFavorites, removeFavorite } from '@/api/favorites'
-import { getErrorKey } from '@/api/errors'
-import { Feedback, PageLoading } from '@/components/Feedback'
-import { cacheGet, cacheSet } from '@/utils/cache'
-import { locationLabel } from '@/utils/localize'
+
+import { AccountLayout } from '@/components/AccountLayout'
+import { Feedback } from '@/components/Feedback'
+import { PropertyCard } from '@/components/PropertyCard'
+import { StatusPanel } from '@/components/StatusPanel'
+import { useFavorites } from '@/hooks/useFavorites'
 
 export function FavoritesPage() {
   const { t } = useTranslation()
-  type Item = { id: number; property: { id: number; title: string; city: string } }
-  const [items, setItems] = useState<Item[]>(() => cacheGet<Item[]>('favs') ?? [])
-  const [loading, setLoading] = useState(() => !cacheGet<Item[]>('favs'))
-  const [error, setError] = useState<string | null>(null)
-  const load = () => {
-    if (!cacheGet<Item[]>('favs')) setLoading(true)
-    setError(null)
-    fetchFavorites()
-      .then((list) => {
-        cacheSet('favs', list)
-        setItems(list)
-      })
-      .catch((err) => setError(getErrorKey(err)))
-      .finally(() => setLoading(false))
-  }
-  useEffect(() => {
-    load()
-  }, [])
-  const remove = async (id: number) => {
-    try {
-      await removeFavorite(id)
-      load()
-    } catch (err) {
-      setError(getErrorKey(err))
-    }
-  }
-  if (loading) return <PageLoading />
+  const favorites = useFavorites()
+
   return (
-    <section className="mx-auto w-full max-w-[88rem] px-4 py-8">
-      <h1 className="font-display text-2xl text-ink">
-        {t('account.favorites')}
-      </h1>
-      <div className="mt-4">
-        <Feedback messageKey={error} />
-      </div>
-      {!error && items.length === 0 && (
-        <p className="mt-6 text-sm text-muted">{t('favorites.empty')}</p>
-      )}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((item) => (
-          <article
-            key={item.id}
-            className="min-w-0 overflow-hidden rounded-lg border border-line bg-surface"
-          >
-            <Link to={`/elonlar/${item.property.id}`} className="block p-4">
-              <p className="break-words font-semibold text-ink">
-                {item.property.title}
-              </p>
-              <p className="mt-1 text-sm text-muted">
-                {locationLabel(item.property.city, t)}
-              </p>
-            </Link>
-            <button
-              onClick={() => remove(item.property.id)}
-              className="w-full border-t border-line px-4 py-2 text-sm text-muted hover:text-danger"
+    <AccountLayout title={t('account.favorites')}>
+      <Feedback messageKey={favorites.error} />
+      {favorites.loading ? (
+        <div aria-busy="true" className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2].map((n) => (
+            <div key={n} className="h-72 rounded-2xl bg-soft motion-safe:animate-pulse" />
+          ))}
+        </div>
+      ) : favorites.list.length === 0 && !favorites.error ? (
+        <StatusPanel
+          icon={Heart}
+          title={t('dashboard.emptyFavorites')}
+          body={t('dashboard.emptyFavoritesBody')}
+          action={
+            <Link
+              to="/"
+              className="inline-flex min-h-11 items-center rounded-full bg-accent px-6 text-sm font-bold text-on-accent"
             >
-              {t('common.remove')}
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
+              {t('dashboard.browse')}
+            </Link>
+          }
+        />
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {favorites.list.map(({ property }) => (
+            <PropertyCard
+              key={property.id}
+              property={property}
+              isFavorite
+              onFavoriteToggle={(p) => void favorites.toggle(p)}
+            />
+          ))}
+        </div>
+      )}
+    </AccountLayout>
   )
 }

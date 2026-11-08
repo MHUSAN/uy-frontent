@@ -22,7 +22,7 @@ interface PropertyGridProps {
 }
 
 const RETRY_BUTTON =
-  'inline-flex h-8 items-center rounded-md border border-line bg-surface px-3 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent'
+  'inline-flex min-h-11 items-center rounded-full border border-line bg-surface px-5 text-sm font-medium text-ink transition-colors hover:border-ink/40'
 
 export function PropertyGrid({
   properties,
@@ -40,17 +40,17 @@ export function PropertyGrid({
   if (effectiveState === 'loading') {
     return (
       <div className={className} aria-busy="true">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {[0, 1, 2].map((index) => (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((index) => (
             <div
               key={index}
-              className="overflow-hidden rounded-lg border border-line bg-surface motion-safe:animate-pulse"
+              className="overflow-hidden rounded-2xl bg-surface shadow-[0_2px_14px_rgba(0,0,0,0.07)] motion-safe:animate-pulse"
             >
-              <div className="aspect-[4/3] bg-canvas" />
-              <div className="space-y-2 p-3.5">
-                <div className="h-4 w-24 rounded bg-canvas" />
-                <div className="h-3 w-4/5 rounded bg-canvas" />
-                <div className="h-3 w-3/5 rounded bg-canvas" />
+              <div className="aspect-[4/3] bg-soft" />
+              <div className="space-y-2 p-4">
+                <div className="h-5 w-28 rounded bg-soft" />
+                <div className="h-3 w-4/5 rounded bg-soft" />
+                <div className="h-3 w-3/5 rounded bg-soft" />
               </div>
             </div>
           ))}
@@ -101,7 +101,7 @@ export function PropertyGrid({
   }
 
   return (
-    <div className={`grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 ${className}`}>
+    <div className={`grid gap-5 sm:grid-cols-2 xl:grid-cols-3 ${className}`}>
       {properties.map((property) => (
         <PropertyCard
           key={property.id}

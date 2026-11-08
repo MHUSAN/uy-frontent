@@ -7,7 +7,6 @@ import type {
   PropertyStatus,
 } from '@/types/property'
 import type { SearchFilters } from '@/types/search'
-import { cityForRegion } from '@/utils/location'
 
 const CURRENCY_MAP: Record<string, string> = {
   usd: 'USD',
@@ -36,9 +35,6 @@ export function mapProperty(value: unknown): Property {
     status: (r.status as PropertyStatus) ?? undefined,
     address: String(r.address ?? ''),
     city: String(r.city ?? ''),
-    district: (r.district as string | null) ?? null,
-    latitude: (r.latitude as number | null) ?? null,
-    longitude: (r.longitude as number | null) ?? null,
     area: Number(r.area),
     rooms: Number(r.rooms),
     bathrooms: Number(r.bathrooms),
@@ -53,7 +49,7 @@ export function mapProperty(value: unknown): Property {
           id: Number((r.owner as Record<string, unknown>).id),
           fullName: String((r.owner as Record<string, unknown>).fullName ?? ''),
           phone: ((r.owner as Record<string, unknown>).phone as string | null) ?? null,
-          telegram: ((r.owner as Record<string, unknown>).telegram as string | null) ?? null,
+          email: ((r.owner as Record<string, unknown>).email as string | null) ?? null,
         }
       : null,
     ownerId: r.ownerId ? Number(r.ownerId) : undefined,
@@ -68,45 +64,44 @@ export interface PropertyPage {
   totalPages: number
 }
 
+export type SortValue = 'newest' | 'price_asc' | 'price_desc'
+
+/** Only parameters documented by the API: unknown ones are rejected with 400. */
 export function toQueryParams(filters: Partial<SearchFilters> = {}): Record<string, unknown> {
   const params: Record<string, unknown> = {}
-
-  if (filters.listingType) params.listingType = filters.listingType
-  if (filters.query?.trim()) params.q = filters.query.trim()
-  if (filters.region) {
-    const city = cityForRegion(filters.region)
-    if (city) params.city = city
-  }
+  if (filters.listingType) params.type = filters.listingType
+  if (filters.city?.trim()) params.city = filters.city.trim()
+  if (filters.categorySlug) params.category = filters.categorySlug
   if (filters.minPrice?.trim()) params.minPrice = Number(filters.minPrice)
   if (filters.maxPrice?.trim()) params.maxPrice = Number(filters.maxPrice)
-  if (filters.rooms) {
-    params.rooms = filters.rooms === '5' ? 5 : Number(filters.rooms)
-  }
-  if (filters.district?.trim()) params.district = filters.district.trim()
-  if (filters.categorySlug) params.category = filters.categorySlug
-
+  if (filters.rooms) params.rooms = Number(filters.rooms)
   return params
+}
+
+/** API shape: { data, meta: { page, limit, total, totalPages } }. */
+export function mapPage(payload: unknown, fallbackPage = 1, fallbackLimit = 12): PropertyPage {
+  const r = (payload ?? {}) as Record<string, unknown>
+  const rows = Array.isArray(r.data) ? r.data : Array.isArray(r.items) ? r.items : []
+  const meta = (r.meta ?? r) as Record<string, unknown>
+  return {
+    items: rows.map(mapProperty),
+    total: Number(meta.total ?? rows.length),
+    page: Number(meta.page ?? fallbackPage),
+    limit: Number(meta.limit ?? fallbackLimit),
+    totalPages: Math.max(1, Number(meta.totalPages ?? 1)),
+  }
 }
 
 export async function fetchProperties(
   filters: Partial<SearchFilters> = {},
   page = 1,
   limit = 12,
-  sort: 'newest' | 'oldest' | 'price_asc' | 'price_desc' = 'newest',
+  sort: SortValue = 'newest',
 ): Promise<PropertyPage> {
   try {
     const params = { ...toQueryParams(filters), page, limit, sort }
     const { data } = await apiClient.get('/properties', { params })
-    const payload = data as Record<string, unknown>
-    return {
-      items: Array.isArray(payload.items)
-        ? payload.items.map(mapProperty)
-        : [],
-      total: Number(payload.total ?? 0),
-      page: Number(payload.page ?? page),
-      limit: Number(payload.limit ?? limit),
-      totalPages: Number(payload.totalPages ?? 1),
-    }
+    return mapPage(data, page, limit)
   } catch (error) {
     throw normalizeApiError(error)
   }
@@ -151,29 +146,19 @@ export async function deleteProperty(id: number): Promise<void> {
   }
 }
 
-export async function uploadPropertyImages(
-  id: number,
-  files: File[],
-): Promise<Property> {
+/**
+ * One request per image, multipart field name `image`. Content-Type is left to
+ * the browser so the multipart boundary is set correctly.
+ */
+export async function uploadPropertyImage(id: number, file: File): Promise<PropertyImage> {
   try {
     const form = new FormData()
-    files.forEach((file) => form.append('images', file))
+    form.append('image', file)
     const { data } = await apiClient.post(`/properties/${id}/images`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
+      timeout: 60_000,
     })
-    return mapProperty(data)
-  } catch (error) {
-    throw normalizeApiError(error)
-  }
-}
-
-export async function addPropertyImageUrls(
-  id: number,
-  urls: string[],
-): Promise<Property> {
-  try {
-    const { data } = await apiClient.post(`/properties/${id}/images/url`, { urls })
-    return mapProperty(data)
+    return mapImage(data as Record<string, unknown>)
   } catch (error) {
     throw normalizeApiError(error)
   }
@@ -187,17 +172,12 @@ export async function deletePropertyImage(id: number, imageId: number): Promise<
   }
 }
 
+/** GET /properties/my returns a plain array (no pagination). */
 export async function fetchMyProperties(): Promise<PropertyPage> {
   try {
-    const { data } = await apiClient.get('/properties/mine')
-    const payload = data as Record<string, unknown>
-    return {
-      items: Array.isArray(payload.items) ? payload.items.map(mapProperty) : [],
-      total: Number(payload.total ?? 0),
-      page: Number(payload.page ?? 1),
-      limit: Number(payload.limit ?? 12),
-      totalPages: Number(payload.totalPages ?? 1),
-    }
+    const { data } = await apiClient.get('/properties/my')
+    const rows = Array.isArray(data) ? data.map(mapProperty) : []
+    return { items: rows, total: rows.length, page: 1, limit: rows.length, totalPages: 1 }
   } catch (error) {
     throw normalizeApiError(error)
   }

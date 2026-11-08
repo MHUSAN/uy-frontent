@@ -26,7 +26,7 @@ export function UserAvatar({ user }: { user: User }) {
   return (
     <span
       aria-hidden="true"
-      className="flex size-9 shrink-0 items-center justify-center rounded-full border border-accent/15 bg-accent-soft text-xs font-semibold text-accent"
+      className="flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-xs font-bold text-on-accent"
     >
       {initials}
     </span>
@@ -136,19 +136,19 @@ export function AccountMenu({ onOpen }: { onOpen?: () => void }) {
             setOpen(true)
           }
         }}
-        className="flex min-h-11 min-w-0 items-center gap-2 rounded-lg text-left text-ink hover:bg-accent-soft sm:px-2"
+        className="flex min-h-11 min-w-0 items-center gap-2 rounded-full text-left text-white hover:bg-white/10 sm:pr-3"
       >
         <UserAvatar user={user} />
         <span
           title={user.fullName || user.email}
-          className="max-w-18 truncate text-xs font-semibold sm:max-w-40 sm:text-sm"
+          className="hidden max-w-40 truncate text-sm font-semibold sm:block"
         >
           {user.fullName || user.email}
         </span>
         <ChevronDown
           size={14}
           aria-hidden="true"
-          className="shrink-0 text-muted"
+          className="hidden shrink-0 text-white/60 sm:block"
         />
       </button>
       {open && (
@@ -158,7 +158,7 @@ export function AccountMenu({ onOpen }: { onOpen?: () => void }) {
           role="menu"
           aria-labelledby={`${id}-trigger`}
           onKeyDown={onMenuKey}
-          className="fixed right-4 top-16 z-50 sm:absolute sm:right-0 sm:top-full mt-2 max-h-[70vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-line bg-surface p-1.5 shadow-lg"
+          className="fixed right-4 top-20 z-50 sm:absolute sm:right-0 sm:top-full mt-2 max-h-[70vh] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border border-line bg-surface p-1.5 text-ink shadow-xl"
         >
           <div role="none" className="border-b border-line px-3 py-3">
             <p className="break-words text-sm font-semibold text-ink">

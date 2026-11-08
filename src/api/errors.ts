@@ -27,6 +27,7 @@ export function getErrorKey(error: unknown): string {
   }
   if (api?.code && codeKeys[api.code]) return codeKeys[api.code]
   const message = api?.message ?? ''
+  if (/Kategoriya topilmadi/i.test(message)) return 'errors.categoryMissing'
   if (/already in favorites/i.test(message)) return 'errors.favoriteExists'
   if (/Bunday nomli kategoriya/i.test(message)) return 'errors.categoryName'
   if (/Bunday slug/i.test(message)) return 'errors.categorySlug'

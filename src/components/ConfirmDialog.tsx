@@ -5,6 +5,7 @@ export function ConfirmDialog({
   messageKey,
   values,
   confirmKey,
+  danger = false,
   busy,
   onConfirm,
   onCancel,
@@ -12,6 +13,7 @@ export function ConfirmDialog({
   messageKey: string
   values: Record<string, string>
   confirmKey: string
+  danger?: boolean
   busy: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -33,7 +35,7 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby={`${id}-title`}
       aria-describedby={`${id}-message`}
-      className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && !busy) {
           event.preventDefault()
@@ -64,9 +66,9 @@ export function ConfirmDialog({
     >
       <div
         ref={panel}
-        className="max-h-[80vh] w-full min-w-0 max-w-md overflow-auto rounded-xl border border-line bg-surface p-5"
+        className="max-h-[80vh] w-full min-w-0 max-w-md overflow-auto rounded-3xl bg-surface p-6 shadow-2xl"
       >
-        <h2 id={`${id}-title`} className="font-display text-xl text-ink">
+        <h2 id={`${id}-title`} className="text-xl font-extrabold text-ink">
           {t('common.confirm')}
         </h2>
         <p
@@ -81,7 +83,7 @@ export function ConfirmDialog({
             type="button"
             disabled={busy}
             onClick={onCancel}
-            className="min-h-11 rounded-md border border-line px-4 py-2 text-sm text-ink disabled:opacity-60"
+            className="min-h-12 rounded-full border border-line px-6 text-sm font-medium text-ink hover:border-ink/40 disabled:opacity-60"
           >
             {t('common.cancel')}
           </button>
@@ -89,7 +91,7 @@ export function ConfirmDialog({
             type="button"
             disabled={busy}
             onClick={onConfirm}
-            className="min-h-11 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-on-accent disabled:opacity-60"
+            className={`min-h-12 rounded-full px-6 text-sm font-bold disabled:opacity-60 ${danger ? 'bg-danger text-white' : 'bg-accent text-on-accent'}`}
           >
             {t(busy ? 'common.saving' : confirmKey)}
           </button>

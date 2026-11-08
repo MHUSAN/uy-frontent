@@ -1,18 +1,18 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { RootLayout } from '@/layouts/RootLayout'
-import { AuthPage } from '@/pages/AuthPage'
-import { AdminPage } from '@/pages/AdminPage'
-import { FavoritesPage } from '@/pages/FavoritesPage'
+const AdminPage = lazy(() => import('@/pages/AdminPage').then((m) => ({ default: m.AdminPage })))
+const FavoritesPage = lazy(() => import('@/pages/FavoritesPage').then((m) => ({ default: m.FavoritesPage })))
 import { HomePage } from '@/pages/HomePage'
-import { InquiriesPage } from '@/pages/InquiriesPage'
-import { LoginPage } from '@/pages/LoginPage'
+const InquiriesPage = lazy(() => import('@/pages/InquiriesPage').then((m) => ({ default: m.InquiriesPage })))
+const LoginPage = lazy(() => import('@/pages/LoginPage').then((m) => ({ default: m.LoginPage })))
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { PropertyDetailPage } from '@/pages/PropertyDetailPage'
-import { PropertyFormPage } from '@/pages/PropertyFormPage'
-import { ProfilePage } from '@/pages/ProfilePage'
-import { RegisterPage } from '@/pages/RegisterPage'
-import { SellerDashboardPage } from '@/pages/SellerDashboardPage'
+const PropertyDetailPage = lazy(() => import('@/pages/PropertyDetailPage').then((m) => ({ default: m.PropertyDetailPage })))
+const PropertyFormPage = lazy(() => import('@/pages/PropertyFormPage').then((m) => ({ default: m.PropertyFormPage })))
+const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })))
+const RegisterPage = lazy(() => import('@/pages/RegisterPage').then((m) => ({ default: m.RegisterPage })))
+const SellerDashboardPage = lazy(() => import('@/pages/SellerDashboardPage').then((m) => ({ default: m.SellerDashboardPage })))
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 
 export function AppRoutes() {
@@ -25,9 +25,6 @@ export function AppRoutes() {
         <Route path="profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
         <Route path="register" element={<RegisterPage />} />
         <Route path="admin/login" element={<Navigate to="/login" replace />} />
-        <Route path="verify-email" element={<AuthPage key="verify" mode="verify" />} />
-        <Route path="forgot-password" element={<AuthPage key="forgot" mode="forgot" />} />
-        <Route path="reset-password" element={<AuthPage key="reset" mode="reset" />} />
         <Route path="elonlar/:id" element={<PropertyDetailPage />} />
         <Route
           path="elonlar/:id/tahrir"

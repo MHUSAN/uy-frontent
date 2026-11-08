@@ -37,7 +37,7 @@ export function ThemeToggle() {
             onClick={() => setTheme(value)}
             className={`inline-flex size-7 items-center justify-center rounded-[5px] transition-colors sm:size-8 ${
               isActive
-                ? 'bg-accent-soft text-accent'
+                ? 'bg-accent-soft text-accent-ink'
                 : 'text-muted hover:bg-canvas hover:text-ink'
             }`}
           >

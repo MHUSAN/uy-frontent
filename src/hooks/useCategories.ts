@@ -1,75 +1,69 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 import { fetchCategories } from '@/api/categories'
 import { ApiError } from '@/api/errors'
 import type { Category } from '@/types/property'
-import { cacheGet, cacheSet } from '@/utils/cache'
 
 export type CategoryStatus = 'loading' | 'ready' | 'empty' | 'error'
 
-interface CategoriesState {
-  status: CategoryStatus
-  categories: Category[]
-  error: ApiError | null
+const STORAGE_KEY = 'tezuy.categories'
+export const CATEGORIES_KEY = ['categories'] as const
+
+interface Stored {
+  at: number
+  data: Category[]
 }
 
-const INITIAL_STATE: CategoriesState = {
-  status: 'loading',
-  categories: [],
-  error: null,
+function readStored(): Stored | null {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const parsed = raw ? (JSON.parse(raw) as Stored) : null
+    return parsed && Array.isArray(parsed.data) && parsed.data.length ? parsed : null
+  } catch {
+    return null
+  }
 }
 
-const CACHE_KEY = 'categories'
+export function clearStoredCategories() {
+  try {
+    window.localStorage.removeItem(STORAGE_KEY)
+  } catch {
+    // Storage is optional.
+  }
+}
 
+/** Categories rarely change: show the saved copy at once, refresh in the background. */
 export function useCategories() {
-  const [state, setState] = useState<CategoriesState>(() => {
-    const cached = cacheGet<Category[]>(CACHE_KEY)
-    return cached?.length
-      ? { status: 'ready', categories: cached, error: null }
-      : INITIAL_STATE
+  const stored = readStored()
+  const query = useQuery({
+    queryKey: CATEGORIES_KEY,
+    queryFn: async ({ signal }) => {
+      const data = await fetchCategories(signal)
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ at: Date.now(), data }))
+      } catch {
+        // Storage is optional.
+      }
+      return data
+    },
+    staleTime: 10 * 60_000,
+    initialData: stored?.data,
+    initialDataUpdatedAt: stored?.at,
   })
-  const [attempt, setAttempt] = useState(0)
 
-  useEffect(() => {
-    const controller = new AbortController()
+  const categories = query.data ?? []
+  const status: CategoryStatus = query.isPending
+    ? 'loading'
+    : query.isError && categories.length === 0
+      ? 'error'
+      : categories.length === 0
+        ? 'empty'
+        : 'ready'
 
-    void fetchCategories(controller.signal).then(
-      (categories) => {
-        if (controller.signal.aborted) {
-          return
-        }
-
-        cacheSet(CACHE_KEY, categories)
-        setState({
-          status: categories.length > 0 ? 'ready' : 'empty',
-          categories,
-          error: null,
-        })
-      },
-      (error: unknown) => {
-        if (controller.signal.aborted) {
-          return
-        }
-
-        if (cacheGet<Category[]>(CACHE_KEY)?.length) return
-        setState({
-          status: 'error',
-          categories: [],
-          error:
-            error instanceof ApiError
-              ? error
-              : new ApiError('The categories request failed.'),
-        })
-      },
-    )
-
-    return () => controller.abort()
-  }, [attempt])
-
-  const retry = useCallback(() => {
-    setState((s) => (s.categories.length ? s : INITIAL_STATE))
-    setAttempt((current) => current + 1)
-  }, [])
-
-  return { ...state, retry }
+  return {
+    status,
+    categories,
+    error: query.error ? (query.error instanceof ApiError ? query.error : new ApiError('The categories request failed.')) : null,
+    retry: () => void query.refetch(),
+  }
 }

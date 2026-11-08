@@ -28,7 +28,7 @@ export function StatusPanel({
         className={`mx-auto grid size-9 place-items-center rounded-md ${
           tone === 'error'
             ? 'bg-danger/10 text-danger'
-            : 'bg-accent-soft text-accent'
+            : 'bg-accent-soft text-accent-ink'
         }`}
       >
         <Icon size={18} strokeWidth={1.8} />
