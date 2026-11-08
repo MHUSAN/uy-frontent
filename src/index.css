@@ -13,6 +13,9 @@
   --accent: #91e63b;
   --accent-soft: #eef9df;
   --accent-ink: #3d6f0b;
+  --night: #151515;
+  --night-line: #303030;
+  --muted-night: #a3a3a3;
   --on-accent: #141414;
   --danger: #b42318;
 
@@ -24,6 +27,9 @@
   --color-soft: var(--soft);
   --color-nav: var(--nav);
   --color-accent-ink: var(--accent-ink);
+  --color-night: var(--night);
+  --color-night-line: var(--night-line);
+  --color-muted-night: var(--muted-night);
   --color-surface: var(--surface);
   --color-ink: var(--ink);
   --color-muted: var(--muted);

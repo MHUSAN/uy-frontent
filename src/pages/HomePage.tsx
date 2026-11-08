@@ -10,6 +10,7 @@ import { FilterSidebar } from '@/components/FilterSidebar'
 import { Pagination } from '@/components/Pagination'
 import { PropertyGrid, type PropertyGridState } from '@/components/PropertyGrid'
 import { PropertyCard } from '@/components/PropertyCard'
+import { SortDropdown } from '@/components/SortDropdown'
 import { useCategories } from '@/hooks/useCategories'
 import { useFavorites } from '@/hooks/useFavorites'
 import { clearRecentlyViewed, useRecentlyViewed } from '@/hooks/useRecentlyViewed'
@@ -24,7 +25,6 @@ import { readFilters, readPage, writeFilters } from '@/utils/searchParams'
 
 const PAGE_SIZE = 12
 const CITY_DEBOUNCE_MS = 500
-const SORT_OPTIONS: SortValue[] = ['newest', 'price_asc', 'price_desc']
 
 export function HomePage() {
   const { t } = useTranslation()
@@ -169,21 +169,11 @@ export function HomePage() {
                     </span>
                   )}
                 </button>
-                <label htmlFor="sort" className="sr-only sm:not-sr-only sm:text-sm sm:text-muted">
-                  {t('listing.sort')}
-                </label>
-                <select
-                  id="sort"
+                <SortDropdown
                   value={applied.sort}
-                  onChange={(event) => changeSort(event.target.value as SortValue)}
-                  className="h-11 flex-1 rounded-full border border-line bg-surface px-4 text-sm font-medium text-ink hover:border-ink/40 sm:flex-none"
-                >
-                  {SORT_OPTIONS.map((value) => (
-                    <option key={value} value={value}>
-                      {t(`home.listings.sortOptions.${value}`)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={changeSort}
+                  className="flex-1 sm:w-64 sm:flex-none"
+                />
               </div>
             </div>
 
